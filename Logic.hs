@@ -14,8 +14,7 @@ import Refs
 import Value
 import Sheet
 
-
--- For boolean calculations
+-- For Boolean calculations
 data Logic e = LVal Bool
 		| And e e
 		| Or e e
@@ -26,6 +25,7 @@ data Logic e = LVal Bool
 		| BRef (Sheet e) Ref
 		| BFunc String  [e] deriving (Show)
 
+-- |It's a functor
 instance Functor Logic where
 	fmap f (LVal x)  = LVal x
 	fmap f (And x y)  = And (f x) (f y)
@@ -36,6 +36,7 @@ instance Functor Logic where
 	fmap f (LEQ x y)  = LEQ (f x) (f y)
 	fmap f (BFunc s ps) = BFunc s (map f ps)
 
+-- |And we can evaluate it
 instance Monad m => Eval Logic m where
 	evalAlg :: Logic (m Value) -> m Value
 	evalAlg (LVal x) = return $ B x
@@ -62,10 +63,12 @@ instance Monad m => Eval Logic m where
 					let ff = fromJust $ M.lookup (map toUpper s) bFunctionMap
 					return $ ff pss;
 
--- | Look up a function
+-- |Look up a function
 bFunctionMap :: Map String ([Value]->Value)
 bFunctionMap = fromList [   ("NOT", vnot)
               ]
+
+-- | A boolean spreadsheet function
 vnot::[Value]->Value
 vnot [] = B True
 vnot ((B x):[]) = B $ not x

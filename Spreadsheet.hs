@@ -16,6 +16,8 @@
 
 import Data.Array hiding ((!))
 import Data.Maybe
+import Data.Foldable as F hiding (concatMap)
+import Data.List.Split
 import Control.Monad.Identity
 import Control.Comonad hiding ((<@))
 import Data.Char
@@ -54,20 +56,11 @@ type RenderFn = Sheet (UI Element ) -> UI Element
 -- which we can then just eval?
 
 main :: IO ()
-main = do    
-    rSheet <- newIORef (sheetString) -- , (flip fmap) sheetString $ \c-> either (const $ sval "Parse error") id $ parse expr "" c )
+main = do   
+    let fileName = "TestSheet.ss"
+    sheet <- readSheet fileName
+    rSheet <- newIORef (sheet) -- , (flip fmap) sheetString $ \c-> either (const $ sval "Parse error") id $ parse expr "" c )
     startGUI defaultConfig $ setup rSheet
-
-ncols::Int
-ncols= x $ cRef $ snd $ bounds $ cells $ sheetString
-
-nrows::Int
-nrows= y $ rRef $ snd $ bounds $ cells $ sheetString
-
--- Just puts the void in
-setup :: IORef (Sheet String)-> Window -> UI ()
-setup rSheet window = void $ do 
-    setup2' rSheet window
 
 {-
 In the bartab exaple the IORef is modified by addInput and removeInput and then the whole lot is redisplayed - ie. getBody
@@ -125,17 +118,17 @@ So, can we have a behaviour which has all the 'moves' of each cell (ie. UI.union
 and on any move, saves the focused cell, recalcs, rewrites all cells and then moves to the next?
 The move would then mean - set string back to the input one, make focus.
 
-
-
 -}
 
-setup2' :: IORef (Sheet String)-> Window -> UI Element
-setup2' rSheet window = do   
-    --sheet <- liftIO $ readIORef rSheet
+setup :: IORef (Sheet String)-> Window -> UI ()
+setup rSheet window = void $ do   
+    sheet <- liftIO $ readIORef rSheet
+    let (ncols, nrows) = lastCell sheet
+    
     set title "Spreadsheet" $ return window     
     -- make vanilla input cells with no behaviour
     cellss <- sequence $ map (\row-> sequence $ map (\col-> 
-                                                        simpleCell $ fromCoords (col, row) 
+                                                        simpleCell rSheet $ fromCoords (col, row) 
                                                     ) [1..ncols]
                              ) [1..nrows]
 
@@ -143,7 +136,7 @@ setup2' rSheet window = do
     bInputss <- uiApply cellss (\(cell,ref) -> do  
                                                 let e = fmap (\a-> (a, ref)) $ UI.valueChange cell
                                                 stepper ("", fromCoords (1,1)) e
-                              )
+                               )
 
     -- These behaviours have the value cells on blurring
     -- If we set cells to blur on move these should be triggered?
@@ -151,39 +144,49 @@ setup2' rSheet window = do
     let blurValss = concatMap (\(cs, bInputs) -> fmap (\(cell, bInput) -> bInput <@ UI.blur cell) $ zip cs bInputs ) $ zip cellss bInputss
 
     -- So, this behaviour has the value of the LATEST blurred cell and it's ref
-    --bBlur :: Behavior (String, Ref)
+    -- bBlur :: Behavior (String, Ref)
     bBlur <- stepper ("", fromCoords (1,1)) $ fmap head $ UI.unions blurValss        
         
-    -- Can we do this - when the cell is blurred
-    -- Work out the newInputSheet
-    -- Work out the ne output sheet
-    -- Save a new sheet to the IORef
-    -- Wtite new output to all cekks
+    -- What to do when the cell is blurred
+    --      Work out the new input sheet
+    --      Save a new sheet to the IORef
+    --      Work out the new output sheet
+    --      Write new output to all cells
     onChanges bBlur (\(str, ref) -> do
                         liftIO $ updateSheet (str, ref) rSheet
                         newInput <- liftIO $ readIORef rSheet
-                        let output = recalc newInput
+                        let output = recalcSheet $ parseSheet newInput
                         uiApply cellss (\(cell, ref) -> writeCell cell $ output!ref)
                     )
         
     -- After all this we need to get the cells to display the user input when on focus
     finalCells <- uiApply cellss (\(cell, ref) -> addFocusAndMoveBehaviour rSheet ref cell)
 
-
-    -- This works out the page layout
-    let
-        colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
+    let colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
         rows = zipWith (\r rowCells -> (C.string $ show r) : map element rowCells) [1..nrows] cellss
 
-    elResult <- UI.span
-    let displaySheet = void $ do
+    -- This is an input field for the file name
+    nameInput <- UI.input
+    let displayNameInput = do
             ss <- liftIO $ readIORef rSheet
-            element elResult # set text (show ss)
-    displaySheet    
-    getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [return elResult]
+            element nameInput # set UI.value (name ss)
 
--- apply takes a grid of elements and a function from these elements and the ref of each
--- it applies the function to each element and returns the new ones
+    -- Buttons to save and load files
+    saveButton <- UI.button # set UI.text "Save"
+    loadButton <- UI.button # set UI.text "Load"
+    on UI.click saveButton $ \_ -> do 
+                                    fileName <- get UI.value nameInput
+                                    sheet <- liftIO $ readIORef rSheet
+                                    liftIO $ writeFile fileName $ showSheet sheet
+    on UI.click loadButton $ \_ -> do 
+                                    fileName <- get UI.value nameInput
+                                    sheet <- liftIO $ readSheet fileName
+                                    liftIO $ writeIORef rSheet sheet
+    -- Add all the elements to the window
+    getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [displayNameInput] #+ [element saveButton] #+ [element loadButton]
+
+-- | Apply takes a grid of elements and a function from these elements and the ref of each
+--   and it applies the function to each element and returns the new ones
 uiApply :: [[Element]] -> ((Element, Ref) -> UI a) -> UI [[a]]
 uiApply cellss f = sequence $ map (\(cs, row) -> 
                                     sequence $ map (\(cell, col) -> do  
@@ -191,23 +194,29 @@ uiApply cellss f = sequence $ map (\(cs, row) ->
                                                    ) $ zip cs [1..]
                                ) $ zip cellss [1..]
 
--- Here the input sheet is the user input strin and the output is the calculated values as a string
-recalc :: Sheet String -> Sheet String
-recalc sSheet = fmap (show.runId.eval) $ loeb $ fmap ((either (const $ sval "Parse error") id).(parse expr "")) $ sSheet
+-- | Evaluate and print the cellFns here is the LOEB!
+recalcSheet :: Sheet CellFn -> Sheet String
+recalcSheet fs = fmap (show.runId.eval) $ loeb fs
 
--- We can map over this Behavior and save the entry into the IORef sheet
+-- | Parse the user input stings to the CellFns in each cell
+parseSheet :: Sheet String -> Sheet CellFn
+parseSheet = fmap ((either (const $ sval "Parse error") id).(parse expr ""))
+
+-- | We can map over this Behavior and save the entry into the IORef sheet
 updateSheet :: (String, Ref)->IORef (Sheet String) -> IO ()
 updateSheet (str, ref) rSheet = do
     oldSheet <- liftIO $ readIORef rSheet
     let newSheet = Sheet (name oldSheet) (focus oldSheet) $ (cells oldSheet)//[(ref,str)] 
-    liftIO $ writeIORef rSheet newSheet -- Sheet (name sheet) (focus sheet) $ (cells sheet)//[(ref,str)] 
+    liftIO $ writeIORef rSheet newSheet 
         
 writeCell :: Element -> String -> UI Element
 writeCell cell val = do return cell # set UI.value val
         
-simpleCell :: Ref -> UI Element
-simpleCell ref =  do
-    let (col, row) = toCoords ref
+simpleCell :: IORef (Sheet String) -> Ref -> UI Element
+simpleCell rSheet ref =  do
+    sheet <- liftIO $ readIORef rSheet
+    let (ncols, nrows) = lastCell sheet
+        (col, row) = toCoords ref
         tabIndex = col * nrows + row
     UI.input # set (attr "tabindex") (show tabIndex) # set UI.id_ (show ref) 
 
@@ -235,55 +244,16 @@ addFocusAndMoveBehaviour rSheet ref input = do
                                 _ -> return ()   
     return input
 
-
--- *********************************************************************************************************
-
-
-setup' :: IORef (Sheet String, Sheet CellFn)-> Window -> UI Element
-setup' sheets window = do   
-    (sSheet, fSheet) <- liftIO $ readIORef sheets
-    set title "Spreadsheet" $ return window     
-    -- make the cells and set the in-cell behaviour
-    cellFieldss1 <- sequence $ map (\row-> 
-            sequence $ map (\col-> do
-                let ref = Ref (CAbs col) (RAbs row)
-                makeCell ref -- $ show $ runId $ eval $ (cells (sheet =>> wfix))!ref
-            ) [1..ncols]
-        ) [1..nrows]
-
-
-    cellFieldss2 <- sequence $ map (\(cells, row) -> 
-            sequence $ map (\(cell, col)-> 
-                renderMove sheets (Ref (CAbs col) (RAbs row)) cellFieldss1 cell
-            ) $ zip cells [1..ncols]
-        ) $ zip cellFieldss1 [1..nrows]
-
-    -- Put the cells on the window - the cells are children of the window
-    let
-        colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
-        rows = zipWith (\r rowCells -> (C.string $ show r) : map element rowCells) [1..nrows] cellFieldss1
-
-    elResult <- UI.span
-    let
-        displaySheet = void $ do
-            (ss, fs) <- liftIO $ readIORef sheets
-            element elResult # set text (show ss)
-    displaySheet    
-    getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [return elResult]
-
-
-
-
 -- This just makes the cell - then we can call 
-makeCell :: Ref -> UI Element
-makeCell refIn = do
+makeCell :: IORef (Sheet String) -> Ref -> UI Element
+makeCell rSheet refIn = do
+    sheet <- liftIO $ readIORef rSheet
+    let (ncols, nrows) = lastCell sheet
     let (x,y)= toCoords refIn
     let tabIndex = x * nrows + y
 
     UI.input # set (attr "tabindex") (show tabIndex)  
              # set UI.id_ (show refIn) 
-
-
 
 setCell :: Element -> String -> UI ()
 setCell e s = do 
@@ -292,22 +262,13 @@ setCell e s = do
 
 
 -- Sets the behaviour of the cell
-renderMove :: IORef (Sheet String, Sheet CellFn) -> Ref -> [[Element]] -> Element -> UI Element
-renderMove sheets refIn eCellss input = do
-    (sSheet, fSheet) <- liftIO $ readIORef sheets
-    let bs = snd $ bounds $ cells $ sSheet
-
-    --bUserInput <- stepper ((cells sSheet)!refIn) $ UI.valueChange input
-    --let bParsedInput = (parseToValue fSheet refIn) <$> bUserInput
-    -- This determines what is shown in a cell
-    --bValue <- stepper "" $ fmap head $ UI.unions
-        --[ bParsedInput <@ UI.blur input  -- calculate the value when we leave the cell
-        --, bUserInput <@ UI.focus input   -- return to user input when go back
-        --]
-    --sink UI.value bValue $ return input
+renderMove :: IORef (Sheet String) -> Ref -> [[Element]] -> Element -> UI Element
+renderMove rSheet refIn eCellss input = do
+    sheet <- liftIO $ readIORef rSheet
+    let bs = lastRef sheet
 
     on UI.focus input (\_ -> do
-                            (ss, fs) <- liftIO $ readIORef sheets
+                            ss <- liftIO $ readIORef rSheet
                             (return input) # set UI.value ((ss)!refIn)
                             return ()
                       )
@@ -315,15 +276,15 @@ renderMove sheets refIn eCellss input = do
     let recalc :: UI ()
         recalc = do
             val <- get UI.value input
-            let newsSheet =  Sheet (name sSheet) (focus sSheet) $ (cells sSheet)//[(refIn,val)] -- sheet of input strings
-            let newfSheet = parseToSheet fSheet refIn val -- sheet of CellFns
-            liftIO $ writeIORef sheets (newsSheet, newfSheet)
-            (ss, fs) <- liftIO $ readIORef sheets
-            let vs = fmap (show.runId.eval)$ fs =>> wfix -- sheet of value strings
+            let newsSheet =  Sheet (name sheet) (focus sheet) $ (cells sheet)//[(refIn,val)] -- sheet of input strings
+            liftIO $ writeIORef rSheet newsSheet
+            ss <- liftIO $ readIORef rSheet
+            --let vs = fmap (show.runId.eval)$ fs =>> wfix -- sheet of value strings
+            let vs = recalcSheet $ parseSheet ss -- sheet of Value strings
             sequence $ map (\(eCells, col) -> sequence $ map (\(eCell,row) -> setCell eCell $ (vs)!(fromCoords (row, col))) $ zip eCells [1..]) $ zip eCellss [1..]
             return ()
 
-        -- saves input string and parsed CellFn
+        -- | Saves input string and parsed CellFn
         -- sets cell value to value string
         -- blurs current cell
         -- finds next cell
@@ -349,8 +310,6 @@ renderMove sheets refIn eCellss input = do
                         13 -> do move rDown
                         _  -> do move rZero
                                 
-    --bMove <- stepper 0 $ filterE (\k-> (k==37)||(k==38)||(k==39)||(k==40)||(k==40)) $ UI.keydown input    
-    --onChanges bMove ( \_-> recalc )   
     return input
 
 parseToValue:: Sheet CellFn -> Ref -> String-> String
@@ -386,6 +345,60 @@ getCell r =  do
 CODE GRAVEYARD
 
 ******************************************************************************************************-}
+
+setupOld :: IORef (Sheet String)-> Window -> UI Element
+setupOld rSheet window = do   
+    sheet <- liftIO $ readIORef rSheet
+    let (ncols, nrows) = lastCell sheet
+
+    set title "Spreadsheet" $ return window     
+    -- make the cells and set the in-cell behaviour
+    cellFieldss1 <- sequence $ map (\row-> 
+            sequence $ map (\col-> do
+                let ref = Ref (CAbs col) (RAbs row)
+                makeCell rSheet ref -- $ show $ runId $ eval $ (cells (sheet =>> wfix))!ref
+            ) [1..ncols]
+        ) [1..nrows]
+
+    cellFieldss2 <- sequence $ map (\(cells, row) -> 
+            sequence $ map (\(cell, col)-> 
+                renderMove rSheet (Ref (CAbs col) (RAbs row)) cellFieldss1 cell
+            ) $ zip cells [1..ncols]
+        ) $ zip cellFieldss1 [1..nrows]
+
+    let colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
+        rows = zipWith (\r rowCells -> (C.string $ show r) : map element rowCells) [1..nrows] cellFieldss1
+
+    sheetInput <- UI.span
+    let displaySheetInput :: UI Element
+        displaySheetInput = do
+            ss <- liftIO $ readIORef rSheet
+            element sheetInput # set text (show ss)
+            return sheetInput
+
+    saveButton <- UI.button # set UI.text "Save"
+
+    displaySheetInput   
+    
+    on UI.click saveButton $ \_ -> return ()
+    getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [displaySheetInput, displaySheetInput, element saveButton]
+
+
+{-
+
+    --bMove <- stepper 0 $ filterE (\k-> (k==37)||(k==38)||(k==39)||(k==40)||(k==40)) $ UI.keydown input    
+    --onChanges bMove ( \_-> recalc )   
+
+    --bUserInput <- stepper ((cells sSheet)!refIn) $ UI.valueChange input
+    --let bParsedInput = (parseToValue fSheet refIn) <$> bUserInput
+    -- This determines what is shown in a cell
+    --bValue <- stepper "" $ fmap head $ UI.unions
+        --[ bParsedInput <@ UI.blur input  -- calculate the value when we leave the cell
+        --, bUserInput <@ UI.focus input   -- return to user input when go back
+        --]
+    --sink UI.value bValue $ return input
+
+
 
 
 oldRenderCell :: IORef (Sheet CellFn) -> Ref -> UI Element
@@ -429,5 +442,5 @@ oldRenderCell rSheet refIn = do
 
     sink UI.value bValue $ return input
 
-
+-}
 

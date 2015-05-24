@@ -13,6 +13,8 @@ import Data.Monoid
 import Data.Fix
 import Control.Comonad
 
+-- |This file has some category theory stuff in it which I couldn't find in a common library
+
 newtype HFix h a = HFix { unHFix :: (h (HFix h) a) }
 
 type f :~> g = forall a. f a -> g a
@@ -20,8 +22,9 @@ type f :~> g = forall a. f a -> g a
 hcata :: HFunctor h => (h f :~> f) -> HFix h :~> f
 hcata alg = alg . hfmap (hcata alg) . unHFix
 
--- Identity functors
+-- |Identity functor
 newtype I x = I {unI :: x} deriving (Show)
+-- |Identity functor with dummy type
 newtype J x y = J {unJ :: x}
 
 class HFunctor (h :: ( * -> * ) -> * -> *) where
