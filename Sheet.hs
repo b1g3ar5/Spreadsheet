@@ -39,8 +39,10 @@ import Control.Lens hiding (indices)
 -- But the parser parses to CellFn which is Sheet Fix Cell -> Fix Cell
 -- So the c is Fix Cell and we have a sheet of CellFn's - ie. Sheet CellFn
 
+-- | A spreadsheet - just an array of references with content, a name and a focus (so that we can have a Comonad)
 data Sheet a = Sheet { name::String, focus::Ref, cells::Array Ref a} deriving (Eq)
 
+-- | Just apply the function to the array
 instance Functor Sheet where
     fmap f (Sheet n r xss) =  Sheet n r $ fmap f xss
 
@@ -49,7 +51,7 @@ instance Comonad Sheet where
 	duplicate (Sheet n ix css) = Sheet n ix $ listArray (bounds css) $ fmap (\jx-> Sheet n jx css) $ indices css
 
 shift :: Ref -> Sheet a -> Sheet a
-shift r1 (Sheet n r2 ass) = Sheet n (refAdd (snd $ bounds ass) r1 r2) ass
+shift r1 ss@(Sheet n r2 ass) = Sheet n (refAdd (lastRef ss) r1 r2) ass
 
 instance (Show e) => Show (Sheet e) where
     show ss = printf $ concat $ intersperse "\n" $  [name ss, show $ focus ss, show $ lastRef ss] ++ (elems $ fmap show $ cells ss)
@@ -72,7 +74,6 @@ lastCell s = toCoords $ snd $ bounds $ cells s
 lastRef :: Sheet a -> Ref 
 lastRef s = fromCoords $ lastCell s
 
-
 -- Turns a [string,string] into a (string, String)
 -- This is a horrible function
 toTuple :: [String] -> (String,String)
@@ -88,9 +89,10 @@ zeroSheet = Sheet "Empty" (fromCoords (0,0)) emptyArray
 
 emptyArray = listArray (fromCoords (0,0), fromCoords (0,0)) []
 
--- | Reads a file to a Maybe (Sheet String)
+-- | Reads a file to a (Sheet String)
 --   So the strings represent the user input in the cells
-readSheet :: String -> IO (Sheet String)
+--   This is pretty poor function - we probably should have a Maybe Sheet?
+readSheet :: String -> IO (Sheet String, Sheet Format)
 readSheet fileName = do
     ls <- liftM lines $ readFile fileName
     let name :: String
@@ -98,7 +100,9 @@ readSheet fileName = do
         focus = readRef $ head $ tail ls       
         bound = readRef $ head $ tail  $ tail ls
         -- The full extent of my knowledge of Lens is here.
-        cells = fmap ((_1 %~ readRef) . toTuple . (splitOn ",")) $ drop 3 ls
-    return $ Sheet name focus $ array (fromCoords (1,1), bound) cells
+        -- This turns the line into a tuple and then applies readRef to the first item
+        cells = fmap ((_1 %~ readRef) . toTuple . (take 2) . (splitOn ",")) $ drop 3 ls
+        formats = zip (fmap (readRef . head . (splitOn ",")) $ drop 3 ls) (fmap (read . (flip (!!) 3) . (splitOn ",")) $ drop 3 ls)
+    return $ (Sheet name focus $ array (fromCoords (1,1), bound) cells, Sheet name focus $ array (fromCoords (1,1), bound) formats)
 
 

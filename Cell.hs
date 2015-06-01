@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Cell ( Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
+module Cell ( recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
 
 import Text.Printf
 import Control.Monad
@@ -18,29 +18,27 @@ import Str
 
 
 -- | This file describes the cell type.
--- It also has a lot of functions to help the parser to create
--- the Cell when it has parsed the string that has been entered in the cell.
+--   It also has a lot of functions to help the parser to create
+--   the Cell when it has parsed the string that has been entered in the cell.
 
--- |A cell must contain one of the 3 Expr types or be empty
-data Cell e = CA (Arithmetic e) | CL (Logic e) | CS (Str e)  | CR Ref (Sheet e) | CE
+-- | A cell must contain one of the 3 Expr types or be empty
+data Cell e = CA (Arithmetic e) | CL (Logic e) | CS (Str e) | CE
 
--- |A show function that leaves out all the type stuff
+-- | A show function that leaves out all the type stuff
 instance Show e => Show (Cell e) where
     show (CA x) = show x
     show (CL x) = show x
     show (CS x) = show x
-    show (CR r s) = show $ (cells s)!r
     show CE = ""
 
--- |Just apply f to the contents of the Cell
+-- | Just apply f to the contents of the Cell
 instance Functor Cell where
 	fmap  f (CA x)  = CA $ fmap f x
 	fmap  f (CL x)  = CL $ fmap f x
 	fmap  f (CS x)  = CS $ fmap f x
-	fmap  f (CR r s)  = CR r $ fmap f s
 	fmap  f CE  = CE
 
--- |Similarly for the Eval instance
+-- | Similarly for the Eval instance
 instance Monad m => Eval Cell m where
     evalAlg :: Cell (m Value) -> m Value
     evalAlg (CA x) = evalAlg x
@@ -48,18 +46,22 @@ instance Monad m => Eval Cell m where
     evalAlg (CS x) = evalAlg x
     evalAlg (CE) = evalAlg (CS $ SVal "")
 
--- |For spreadsheets each cell must have a function in it from the sheet to a Fix Cell
--- then we can use moeb, loeb and the comonad stuff - wfix and cfix
+-- | For spreadsheets each cell must have a function in it from the sheet to a Fix Cell
+--   then we can use moeb, loeb and the comonad stuff - wfix and cfix
 type CellFn = Sheet (Fix Cell) -> Fix Cell
 
--- |Create an initial sheet - with numbers in it 
+-- | Evaluate and print the cellFns here is the LOEB!
+recalcSheet :: Sheet CellFn -> Sheet String
+recalcSheet fs = fmap (show.runId.eval) $ loeb fs
+
+-- | Create an initial sheet - with numbers in it 
 emptySheet :: Int -> Int -> Sheet CellFn
 emptySheet m n = Sheet "Empty" (fromCoords (0,0)) $ listArray (fromCoords (0,0), fromCoords (m-1,n-1)) $ all
     	where
             all :: [CellFn]
             all = take (m*n) $ fmap (\i-> nval $ fromIntegral i) [1..]
 
--- |Print a sheet of Fix Cells - that is a recalculated sheet
+-- | Print a sheet of Fix Cells - that is a recalculated sheet
 printCalcedSheet :: Sheet (Fix Cell) -> IO ()
 printCalcedSheet ss = 
 	forM_ [ymin..ymax] $ \i -> do
@@ -77,16 +79,16 @@ printCalcedSheet ss =
 		xss = fmap (show.runId.eval) $ cells ss		
 
 
--- |We can inject from a Sheet into a Cell
--- by creating a cell with a reference to the focussed cell of the Sheet
--- PROBLEM: How do we know that the cell is an Aritmetic/CA type?
+-- | We can inject from a Sheet into a Cell
+--   by creating a cell with a reference to the focussed cell of the Sheet
+--   PROBLEM: How do we know that the cell is an Aritmetic/CA type?
 instance Sheet :<: Cell where
     inj :: Sheet a -> Cell a
     inj s = CA $ NRef s (focus s)
 
 -- | Some helper functions to inject types into CellFns
 
--- |Simple constant cells
+-- | Simple constant cells
 nval :: Double -> CellFn
 nval n = finject $ CA $ AVal n
 bval :: Bool -> CellFn
@@ -94,11 +96,11 @@ bval n = finject $ CL $ LVal n
 sval :: String -> CellFn
 sval n = finject $ CS $ SVal n
 
--- |An Error cell
+-- | An Error cell
 noval :: CellFn
 noval = finject $ CE
 
--- |Arithmetic expression functions
+-- | Arithmetic expression functions
 eadd :: (Cell :<: f) => (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f)
 eadd x y = \ss -> inject $ CA $ Add (x ss) (y ss)
 
@@ -114,7 +116,7 @@ esub x y = \ss -> inject $ CA $ Sub (x ss) (y ss)
 epow :: (Cell :<: f) => (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f)
 epow x y = \ss -> inject $ CA $ Pow (x ss) (y ss)
 
--- |Boolean expression functions
+-- | Boolean expression functions
 eand :: (Cell :<: f) => (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f)
 eand x y = \ss -> inject $ CL $ And (x ss) (y ss)
 
@@ -137,57 +139,23 @@ eeq x y = \ss -> inject $ CL $ LEQ (x ss) (y ss)
 econcat :: (Cell :<: f) => (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f) -> (Sheet (Fix f) -> Fix f)
 econcat x y = \ss -> inject $ CS $ Concat (x ss) (y ss)
 
--- |The spreadsheet built in functions for each value type
--- These go from a list of functions (ie. the parameters) to a function
+-- | The spreadsheet built in functions for each value type
+--   These go from a list of functions (ie. the parameters) to a function
 
--- |Number functions
+-- | Number functions
 enfunc :: (Cell :<: f) => String -> [a -> Fix f] -> (a-> Fix f)
 enfunc name ps = \ss -> inject $ CA $ NFunc name $ fmap (\p -> p ss) ps
 
--- |Boolean functions
+-- | Boolean functions
 ebfunc :: (Cell :<: f) => String -> [a -> Fix f] -> (a-> Fix f)
 ebfunc name ps = \ss -> inject $ CL $ BFunc name $ fmap (\p -> p ss) ps
 
--- |String functions
+-- | String functions
 esfunc :: (Cell :<: f) => String -> [a -> Fix f] -> (a-> Fix f)
 esfunc name ps = \ss -> inject $ CS $ SFunc name $ fmap (\p -> p ss) ps
 
--- References
+-- | References
 eref :: Ref -> CellFn
 eref r = \ss-> (cells ss)!r
-
-
--- ****************************************************************************************************
---
---  CODE GRAVEYARD
---
--- ****************************************************************************************************
-
--- This doesn't work because CellFn is a function from a sheet to a cell
--- We could save the input string here as well
---instance Show CellFn where
-	--show :: CellFn -> String
-	--show f = "Function to: " ++ (show $  (f $ zeroSheet 10 10))
-
--- |Create a sheet full of zeros - for when we load a new spreadsheet
--- no good any more now sheets have functions in each cell?
---zeroSheet :: Int -> Int -> Sheet (Fix Cell)
---zeroSheet n m = Sheet "Zero" (fromCoords (0,0)) $ listArray (fromCoords (0,0), fromCoords ((n-1),(m-1))) $ all
-    	--where
-            --all :: [Fix Cell]
-            --all = take (m*n) $ repeat $ inject $ CA $ AVal 0.0
-
--- Old style sheet with standalone cells
---sheets :: [Sheet (Fix Cell)]
---sheets = [zeroSheet 10 10]
-
--- Sheet with references - so each cell is a function from a sheet of Fix Cells to a Fix Cell
---emptySheetF :: Sheet CellFn
---emptySheetF = Sheet "Empty" (fromCoords (0,0)) $ listArray (fromCoords (0,0), fromCoords (-1,-1)) []
-
-
-
-
-
 
 

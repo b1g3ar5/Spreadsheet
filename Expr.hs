@@ -29,10 +29,11 @@ import Value
 import Arithmetic
 import Logic
 import Str
+import Date
 import Sheet
 
 
--- | We have 3 types of expression which are described in the Arithmetic, Logic and Str types
+-- | We have 4 types of expression which are described in the Arithmetic, Logic, Date and Str types
 -- This file has the apparatus to help in the creation of the type after parsing.
 -- It is copied from Huttons paper "Towards modular compilers for effects"
 -- which is based on W. Swierstra's "Data Types `a la Carte", I think

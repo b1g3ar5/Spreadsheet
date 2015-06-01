@@ -40,85 +40,12 @@ import Parser
 import SpreadsheetTest
 
 
--- If we have these functions
---type RenderFn = Sheet (Fix UI ) -> Fix UI
-type RenderFn = Sheet (UI Element ) -> UI Element
-
--- and maybe, this thing (I can't rmember wht this is for!)
---instance Sheet :<: UI where
---    inj :: Sheet a -> UI a
---    inj s = do return $ (cells s)!(focus s)
-
--- Then if we have a sheet of input cells (which are plain UI elements with simple behaviour)
--- we need to turn each cell into a RenderFn, then we will have a sheet of RenderFn's
-
--- wfix will then turn this sheet of RenderFn's into a sheet of UI Elements
--- which we can then just eval?
-
 main :: IO ()
 main = do   
     let fileName = "TestSheet.ss"
-    sheet <- readSheet fileName
-    rSheet <- newIORef (sheet) -- , (flip fmap) sheetString $ \c-> either (const $ sval "Parse error") id $ parse expr "" c )
+    (sheet, formatSheet) <- readSheet fileName
+    rSheet <- newIORef (sheet) 
     startGUI defaultConfig $ setup rSheet
-
-{-
-In the bartab exaple the IORef is modified by addInput and removeInput and then the whole lot is redisplayed - ie. getBody
-is called again. In my case - because all this faffing about doesn't seem to work, I could try this method.
-So, I would make the cells - but they would only cope with in cell behaviour and onMove would modify the IORef and then 
-call the full recalc.
-
-Now, can we do the recalc with wfix or loab? We have:
-
-wfix :: w (w a -> a) -> a
-( \x -> x >== wfix):: w (w a -> a) -> w a = w CellFn -> w (Fix Cell)
-
-If we can then we want to end up with Sheet Element (or maybe UI Element). This mean that the
-CellFn equivalent will be 
-
-RenderFn :: w Element -> Element
-
-and we need a w of these. Now we have a [[Element]] returned from all the call to makeCell
-but this is no good because [] is nor a comonad
-
-Now, let's just think. Our parser expr takes the string in a cell and makes a CellFn. We can do this for
-all our sheet so we use:
-
-fmap (expr ...) :: Sheet String -> Sheet CellFn
-
-thne we have loeb
-
-loeb:: Sheet CellFn -> Sheet (Fix Cell)
-
-which we can then turn back into a sheet of the calulated values
-
-fmap (show.runId.eval) :: Sheet (Fix Cell) -> Sheet String
-
-So the whole lot is
-
-fmap (show.runId.eval) $ loeb $ fmap ((either (const $ sval "Parse error") id).(parse expr "")) $ inputSheet
-where
-    inputSheet = Sheet of the user input strings
-
-Now, could we have Elements (ie. input cells) on the input sheet?
-We could use:
-
-get UI.value cell
-
-to get the value to give to the parser and:
-
-set UI.value str cell
-
-to set the value - with all that apparatus in the middle.
-
-For this to work we need the input sheet always to have the up to date values of each cell.
-Can't we do this by having a map which is updated every time the focus changes?
-So, this means that on blur of a cell we update the Sheet and recalc
-So, can we have a behaviour which has all the 'moves' of each cell (ie. UI.unions?)
-and on any move, saves the focused cell, recalcs, rewrites all cells and then moves to the next?
-The move would then mean - set string back to the input one, make focus.
-
--}
 
 setup :: IORef (Sheet String)-> Window -> UI ()
 setup rSheet window = void $ do   
@@ -126,7 +53,7 @@ setup rSheet window = void $ do
     let (ncols, nrows) = lastCell sheet
     
     set title "Spreadsheet" $ return window     
-    -- make vanilla input cells with no behaviour
+    -- cells with no behaviour, just labelling
     cellss <- sequence $ map (\row-> sequence $ map (\col-> 
                                                         simpleCell rSheet $ fromCoords (col, row) 
                                                     ) [1..ncols]
@@ -141,11 +68,14 @@ setup rSheet window = void $ do
     -- These behaviours have the value cells on blurring
     -- If we set cells to blur on move these should be triggered?
     -- We need the ref as well, otherwise we don't know where in the Sheet to save the value
-    let blurValss = concatMap (\(cs, bInputs) -> fmap (\(cell, bInput) -> bInput <@ UI.blur cell) $ zip cs bInputs ) $ zip cellss bInputss
+    let blurVals :: [Event (String, Ref)]
+        blurVals = concatMap (\(cs, bInputs) -> 
+                                        fmap (\(cell, bInput) -> bInput <@ UI.blur cell) $ zip cs bInputs 
+                              ) $ zip cellss bInputss
 
     -- So, this behaviour has the value of the LATEST blurred cell and it's ref
     -- bBlur :: Behavior (String, Ref)
-    bBlur <- stepper ("", fromCoords (1,1)) $ fmap head $ UI.unions blurValss        
+    bBlur <- stepper ("", fromCoords (1,1)) $ fmap head $ UI.unions blurVals        
         
     -- What to do when the cell is blurred
     --      Work out the new input sheet
@@ -156,18 +86,21 @@ setup rSheet window = void $ do
                         liftIO $ updateSheet (str, ref) rSheet
                         newInput <- liftIO $ readIORef rSheet
                         let output = recalcSheet $ parseSheet newInput
-                        uiApply cellss (\(cell, ref) -> writeCell cell $ output!ref)
+                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (output!ref))
                     )
         
     -- After all this we need to get the cells to display the user input when on focus
     finalCells <- uiApply cellss (\(cell, ref) -> addFocusAndMoveBehaviour rSheet ref cell)
 
-    let colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
+    let colnames :: [UI Element]
+        colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
+        rows :: [[UI Element]]
         rows = zipWith (\r rowCells -> (C.string $ show r) : map element rowCells) [1..nrows] cellss
 
     -- This is an input field for the file name
     nameInput <- UI.input
-    let displayNameInput = do
+    let displayNameInput :: UI Element
+        displayNameInput = do
             ss <- liftIO $ readIORef rSheet
             element nameInput # set UI.value (name ss)
 
@@ -180,7 +113,7 @@ setup rSheet window = void $ do
                                     liftIO $ writeFile fileName $ showSheet sheet
     on UI.click loadButton $ \_ -> do 
                                     fileName <- get UI.value nameInput
-                                    sheet <- liftIO $ readSheet fileName
+                                    (sheet, formatSheet) <- liftIO $ readSheet fileName
                                     liftIO $ writeIORef rSheet sheet
     -- Add all the elements to the window
     getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [displayNameInput] #+ [element saveButton] #+ [element loadButton]
@@ -194,24 +127,15 @@ uiApply cellss f = sequence $ map (\(cs, row) ->
                                                    ) $ zip cs [1..]
                                ) $ zip cellss [1..]
 
--- | Evaluate and print the cellFns here is the LOEB!
-recalcSheet :: Sheet CellFn -> Sheet String
-recalcSheet fs = fmap (show.runId.eval) $ loeb fs
-
--- | Parse the user input stings to the CellFns in each cell
-parseSheet :: Sheet String -> Sheet CellFn
-parseSheet = fmap ((either (const $ sval "Parse error") id).(parse expr ""))
-
--- | We can map over this Behavior and save the entry into the IORef sheet
+-- | Updates the IORef Sheet with a new user input string
+--   This needs to be mended so that it sorts out circular references
 updateSheet :: (String, Ref)->IORef (Sheet String) -> IO ()
 updateSheet (str, ref) rSheet = do
     oldSheet <- liftIO $ readIORef rSheet
     let newSheet = Sheet (name oldSheet) (focus oldSheet) $ (cells oldSheet)//[(ref,str)] 
     liftIO $ writeIORef rSheet newSheet 
         
-writeCell :: Element -> String -> UI Element
-writeCell cell val = do return cell # set UI.value val
-        
+-- | This just makes a simple cell with an id and a tabindex and no behaviour
 simpleCell :: IORef (Sheet String) -> Ref -> UI Element
 simpleCell rSheet ref =  do
     sheet <- liftIO $ readIORef rSheet
@@ -220,19 +144,21 @@ simpleCell rSheet ref =  do
         tabIndex = col * nrows + row
     UI.input # set (attr "tabindex") (show tabIndex) # set UI.id_ (show ref) 
 
+-- | Adds behaviour to a field in the spreadsheet
+--   The behaviour added moves when a move key (left, right, up, down, enter) is pressed
+--   and puts the user input string back in when the field get focus.
 addFocusAndMoveBehaviour :: IORef (Sheet String) -> Ref -> Element -> UI Element
 addFocusAndMoveBehaviour rSheet ref input = do
-    -- Set the on focus behaviour so that it save the user input value
+    -- Set the on focus behaviour so that it saves the user input value on blurring
     sheet <- liftIO $ readIORef rSheet
     bUserInput <- stepper ((sheet)!ref) $ UI.valueChange input
     bValue <- stepper ((sheet)!ref) $ bUserInput <@ UI.focus input
     sink UI.value bValue $ return input
     -- Set the move behaviour - move when move key is pressed
-    let bs = snd $ bounds $ cells $ sheet
-        move :: Ref -> UI ()
+    let move :: Ref -> UI ()
         move direction = do
             setBlur input
-            next <- getCell $ refAdd bs ref direction
+            next <- getCell $ refAdd (lastRef sheet) ref direction
             UI.setFocus next
             
     on UI.keydown input $ \c ->case c of
@@ -244,22 +170,55 @@ addFocusAndMoveBehaviour rSheet ref input = do
                                 _ -> return ()   
     return input
 
--- This just makes the cell - then we can call 
-makeCell :: IORef (Sheet String) -> Ref -> UI Element
-makeCell rSheet refIn = do
-    sheet <- liftIO $ readIORef rSheet
-    let (ncols, nrows) = lastCell sheet
-    let (x,y)= toCoords refIn
-    let tabIndex = x * nrows + y
+-- | Sets a cell to blurred - copied from UI.setFocus
+setBlur :: Element -> UI ()
+setBlur = runFunction . ffi "$(%1).blur()"
 
-    UI.input # set (attr "tabindex") (show tabIndex)  
-             # set UI.id_ (show refIn) 
+-- | Gets an element from it's ref
+getCell :: Ref -> UI Element
+getCell r =  do
+    w <- askWindow    
+    e <- getElementById w $ show r
+    return $ fromJust e
 
+
+{-******************************************************************************************************
+
+CODE GRAVEYARD
+
+******************************************************************************************************-}
+
+{-
 setCell :: Element -> String -> UI ()
 setCell e s = do 
     set UI.value s (return e)
     return ()
+-}
 
+{-
+-- This parses the same but it returns the new sheet
+parseToSheet:: Sheet CellFn -> Ref -> String -> Sheet CellFn
+parseToSheet sheet ref cellInput = Sheet (name sheet) (focus sheet) newCells
+    where
+        parsedInput = parse expr "" cellInput
+        -- Parse the input to a CellFn and put it in the sheet
+        newCells = (cells sheet)//[(ref,either (const $ sval "Parse error") id parsedInput)]
+-}
+
+
+{-
+parseToValue:: Sheet CellFn -> Ref -> String-> String
+parseToValue sheet ref cellInput = either (const "Parse error") id $ fmap (show . runId . eval) $ fmap ($ newSheet =>> wfix) parsedInput
+    where
+        parsedInput = parse expr "" cellInput
+        -- Parse the input to a CellFn and put it in the sheet
+        newCells = (cells sheet)//[(ref,either (const $ sval "Parse error") id parsedInput)]
+        -- Make a Sheet with the new cells
+        newSheet = Sheet (name sheet) (focus sheet) newCells
+-}
+
+
+{-
 
 -- Sets the behaviour of the cell
 renderMove :: IORef (Sheet String) -> Ref -> [[Element]] -> Element -> UI Element
@@ -312,39 +271,6 @@ renderMove rSheet refIn eCellss input = do
                                 
     return input
 
-parseToValue:: Sheet CellFn -> Ref -> String-> String
-parseToValue sheet ref cellInput = either (const "Parse error") id $ fmap (show . runId . eval) $ fmap ($ newSheet =>> wfix) parsedInput
-    where
-        parsedInput = parse expr "" cellInput
-        -- Parse the input to a CellFn and put it in the sheet
-        newCells = (cells sheet)//[(ref,either (const $ sval "Parse error") id parsedInput)]
-        -- Make a Sheet with the new cells
-        newSheet = Sheet (name sheet) (focus sheet) newCells
-
--- This parses the same but it returns the new sheet
-parseToSheet:: Sheet CellFn -> Ref -> String -> Sheet CellFn
-parseToSheet sheet ref cellInput = Sheet (name sheet) (focus sheet) newCells
-    where
-        parsedInput = parse expr "" cellInput
-        -- Parse the input to a CellFn and put it in the sheet
-        newCells = (cells sheet)//[(ref,either (const $ sval "Parse error") id parsedInput)]
-
--- Sets a cell to blurred - copied from UI.setFocus
-setBlur :: Element -> UI ()
-setBlur = runFunction . ffi "$(%1).blur()"
-
-getCell :: Ref -> UI Element
-getCell r =  do
-    w <- askWindow    
-    e <- getElementById w $ show r
-    return $ fromJust e
-
-
-{-******************************************************************************************************
-
-CODE GRAVEYARD
-
-******************************************************************************************************-}
 
 setupOld :: IORef (Sheet String)-> Window -> UI Element
 setupOld rSheet window = do   
@@ -382,7 +308,7 @@ setupOld rSheet window = do
     
     on UI.click saveButton $ \_ -> return ()
     getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [displaySheetInput, displaySheetInput, element saveButton]
-
+-}
 
 {-
 

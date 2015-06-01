@@ -43,7 +43,8 @@ sFunctionMap = fromList [   ("SUBSTR", subStr)
               ]
 
 subStr :: [Value] -> Value
-subStr [] = S ""
+subStr [] = S "need 3 parameters for subStr, 2 numbers and a string"
 subStr (N start:N len: S s:[]) = S $ take (floor len) $ drop (floor start) s
+subStr _ = S "need 3 parameters for subStr, 2 numbers and a string"
 
 

@@ -10,7 +10,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Parser (expr, nfunc) where
+module Parser (parseSheet, expr, nfunc) where
 
 import System.Environment
 import Text.ParserCombinators.Parsec -- hiding (string)
@@ -31,6 +31,11 @@ import Expr
 import Cell
 import Refs
 import Cat
+
+
+-- | Parse the user input stings to the CellFns in each cell
+parseSheet :: Sheet String -> Sheet CellFn
+parseSheet = fmap ((either (const $ sval "Parse error") id).(parse expr ""))
 
 -- | This is the exported parser. It parses one of a numerical, string or boolean expression
 --expr :: Parser CellFn
