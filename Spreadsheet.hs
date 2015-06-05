@@ -17,21 +17,24 @@
 import Data.Array hiding ((!))
 import Data.Maybe
 import Data.Foldable as F hiding (concatMap)
-import Data.List.Split
+import Data.List.Split hiding (split)
 import Control.Monad.Identity
 import Control.Comonad hiding ((<@))
 import Data.Char
 import Text.ParserCombinators.Parsec as P hiding (string)
+import Text.Read (readMaybe)
 import Data.IORef
+import Data.Time.Calendar
 
 import qualified Control.Monad.State as S
 import qualified Graphics.UI.Threepenny as UI
-import Graphics.UI.Threepenny.Core as C
+import Graphics.UI.Threepenny.Core as C hiding (split)
 
 import Control.Concurrent.STM.TVar
 import Control.Concurrent.STM
 
 import Cat
+import Value
 import Refs
 import Expr
 import Sheet
@@ -40,22 +43,27 @@ import Parser
 import SpreadsheetTest
 
 
+-- TO DO
+
+-- 1. Add checking of circular references when text is entered
+-- 2. Add vlookup, hlookup and index functions
+
 main :: IO ()
 main = do   
     let fileName = "TestSheet.ss"
     (sheet, formatSheet) <- readSheet fileName
-    rSheet <- newIORef (sheet) 
-    startGUI defaultConfig $ setup rSheet
+    rSheets <- newIORef (sheet, formatSheet) 
+    startGUI defaultConfig $ setup rSheets
 
-setup :: IORef (Sheet String)-> Window -> UI ()
-setup rSheet window = void $ do   
-    sheet <- liftIO $ readIORef rSheet
+setup :: IORef (Sheet String, Sheet Format)-> Window -> UI ()
+setup rSheets window = void $ do   
+    (sheet, formatSheet)  <- liftIO $ readIORef rSheets
     let (ncols, nrows) = lastCell sheet
     
     set title "Spreadsheet" $ return window     
     -- cells with no behaviour, just labelling
     cellss <- sequence $ map (\row-> sequence $ map (\col-> 
-                                                        simpleCell rSheet $ fromCoords (col, row) 
+                                                        simpleCell rSheets $ fromCoords (col, row) 
                                                     ) [1..ncols]
                              ) [1..nrows]
 
@@ -82,15 +90,16 @@ setup rSheet window = void $ do
     --      Save a new sheet to the IORef
     --      Work out the new output sheet
     --      Write new output to all cells
-    onChanges bBlur (\(str, ref) -> do
-                        liftIO $ updateSheet (str, ref) rSheet
-                        newInput <- liftIO $ readIORef rSheet
+    onChanges bBlur (\(cstr, ref) -> do
+                        let (str, fmt) = split cstr
+                        liftIO $ updateSheet (str, fmt, ref) rSheets
+                        (newInput, newFormat) <- liftIO $ readIORef rSheets
                         let output = recalcSheet $ parseSheet newInput
-                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (output!ref))
+                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (showWithFormat (newFormat!ref) $ output!ref))
                     )
         
     -- After all this we need to get the cells to display the user input when on focus
-    finalCells <- uiApply cellss (\(cell, ref) -> addFocusAndMoveBehaviour rSheet ref cell)
+    finalCells <- uiApply cellss (\(cell, ref) -> addFocusAndMoveBehaviour rSheets ref cell)
 
     let colnames :: [UI Element]
         colnames = (C.string ""):[C.string $ [chr $ ord 'A' + c - 1]|c<-[1..ncols]]
@@ -101,7 +110,7 @@ setup rSheet window = void $ do
     nameInput <- UI.input
     let displayNameInput :: UI Element
         displayNameInput = do
-            ss <- liftIO $ readIORef rSheet
+            (ss, fs) <- liftIO $ readIORef rSheets
             element nameInput # set UI.value (name ss)
 
     -- Buttons to save and load files
@@ -109,15 +118,23 @@ setup rSheet window = void $ do
     loadButton <- UI.button # set UI.text "Load"
     on UI.click saveButton $ \_ -> do 
                                     fileName <- get UI.value nameInput
-                                    sheet <- liftIO $ readIORef rSheet
+                                    (sheet, formatSheet) <- liftIO $ readIORef rSheets
                                     liftIO $ writeFile fileName $ showSheet sheet
     on UI.click loadButton $ \_ -> do 
                                     fileName <- get UI.value nameInput
                                     (sheet, formatSheet) <- liftIO $ readSheet fileName
-                                    liftIO $ writeIORef rSheet sheet
+                                    liftIO $ writeIORef rSheets (sheet, formatSheet)
     -- Add all the elements to the window
     getBody window #+ [ grid [[grid $ colnames:rows]]] #+ [displayNameInput] #+ [element saveButton] #+ [element loadButton]
 
+
+-- | splits the input string into a string which is the CellFn and a format string
+split :: String -> (String, Format)
+split s = (head ss, if ((length ss) ==1) then (FN 2) else (read $ ss!!1))
+    where
+        ss = splitOn "," s
+        
+   
 -- | Apply takes a grid of elements and a function from these elements and the ref of each
 --   and it applies the function to each element and returns the new ones
 uiApply :: [[Element]] -> ((Element, Ref) -> UI a) -> UI [[a]]
@@ -129,16 +146,17 @@ uiApply cellss f = sequence $ map (\(cs, row) ->
 
 -- | Updates the IORef Sheet with a new user input string
 --   This needs to be mended so that it sorts out circular references
-updateSheet :: (String, Ref)->IORef (Sheet String) -> IO ()
-updateSheet (str, ref) rSheet = do
-    oldSheet <- liftIO $ readIORef rSheet
+updateSheet :: (String, Format, Ref)->IORef (Sheet String, Sheet Format) -> IO ()
+updateSheet (str, fmt, ref) rSheet = do
+    (oldSheet, oldFormat) <- liftIO $ readIORef rSheet
     let newSheet = Sheet (name oldSheet) (focus oldSheet) $ (cells oldSheet)//[(ref,str)] 
-    liftIO $ writeIORef rSheet newSheet 
+    let newFormat = Sheet (name oldFormat) (focus oldFormat) $ (cells oldFormat)//[(ref,fmt)] 
+    liftIO $ writeIORef rSheet (newSheet, newFormat)
         
 -- | This just makes a simple cell with an id and a tabindex and no behaviour
-simpleCell :: IORef (Sheet String) -> Ref -> UI Element
+simpleCell :: IORef (Sheet String, Sheet Format) -> Ref -> UI Element
 simpleCell rSheet ref =  do
-    sheet <- liftIO $ readIORef rSheet
+    (sheet, formatSheet)  <- liftIO $ readIORef rSheet
     let (ncols, nrows) = lastCell sheet
         (col, row) = toCoords ref
         tabIndex = col * nrows + row
@@ -147,10 +165,10 @@ simpleCell rSheet ref =  do
 -- | Adds behaviour to a field in the spreadsheet
 --   The behaviour added moves when a move key (left, right, up, down, enter) is pressed
 --   and puts the user input string back in when the field get focus.
-addFocusAndMoveBehaviour :: IORef (Sheet String) -> Ref -> Element -> UI Element
+addFocusAndMoveBehaviour :: IORef (Sheet String, Sheet Format) -> Ref -> Element -> UI Element
 addFocusAndMoveBehaviour rSheet ref input = do
     -- Set the on focus behaviour so that it saves the user input value on blurring
-    sheet <- liftIO $ readIORef rSheet
+    (sheet, formatSheet) <- liftIO $ readIORef rSheet
     bUserInput <- stepper ((sheet)!ref) $ UI.valueChange input
     bValue <- stepper ((sheet)!ref) $ bUserInput <@ UI.focus input
     sink UI.value bValue $ return input

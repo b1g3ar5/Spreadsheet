@@ -3,11 +3,14 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Value ( VF, Format, Value(..), Eval(..), eval, vand, vor, vxor, vgt, vlt, veq, ccat) where
+module Value ( showWithFormat, Format(..), Value(..), Eval(..), eval, vand, vor, vxor, vgt, vlt, veq, ccat) where
 
 import Data.String
 import Data.Number.Erf as E
 import Data.Time.Calendar
+import Data.Time.Format
+import Text.Read (readMaybe)
+import System.Locale
 
 import Cat
 
@@ -113,25 +116,28 @@ veq (B b) (B c) = B $ (b == c)
 ccat:: Value -> Value -> Value
 ccat (S b) (S c) = S $ b ++ c
 
--- Formatting - we need to show Values with a format
+-- | Formatting - we need to show Values with a format
 -- We need number of decimal points and dates for the minumum
--- so We'll have a -1 for dates and any other number for decimal points then
--- we can have:
-type Format = Int
+-- YMD = yyyy-mm-ss
+-- DMY = dd-mmm-yy
+-- FN n = n decimal places
+-- Loads more formats we could add - commas, red for negative, brackets for negative etc.
+data Format = FN Int | YMD | DMY
 
--- We'll have a typr for formatted output
-
-type VF = (Value, Format)
-
--- Then we cam habe a special version of show
-
-instance Show VF where
-	show ((N x), t) = if t==(-1) then (show $ ModifiedJulianDay $ round x) else show $ fromIntegral (round $ x*k) /k
-	    where k = 10.0**(fromIntegral t)
-	show ((B b), t) = show b
-	show ((S s), t) = s
-	show ((E e), t) = "Error: " ++ show e
-
+showWithFormat :: Format -> String -> String
+showWithFormat (FN f) s = maybe s (\x -> show (fromIntegral (round (x*k)) / k)) $ readMaybe s
+    where
+        k = 10.0 ** (fromIntegral f)
+showWithFormat YMD s = maybe s (\x -> show $ ModifiedJulianDay $ round x) $ readMaybe s
+showWithFormat DMY s = maybe s (\x -> formatTime defaultTimeLocale "%d-%b-%y" $ ModifiedJulianDay $ round x) $ readMaybe s
+        
+instance Read Format where
+    readsPrec _ s = [(maybe (FN 2) id $ ff s, "")]
+        where
+            ff :: String -> Maybe Format
+            ff "YMD" = Just YMD
+            ff "DMY" = Just DMY
+            ff s = fmap (FN) (readMaybe s)
 
 
 

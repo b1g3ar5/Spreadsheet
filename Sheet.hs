@@ -18,6 +18,7 @@ import Data.Array.ST
 
 import Data.Array
 import Data.Maybe
+import Text.Read (readMaybe)
 import Data.List hiding (foldr)
 import Data.List.Split
 import Data.Foldable as F hiding (concat)
@@ -102,7 +103,17 @@ readSheet fileName = do
         -- The full extent of my knowledge of Lens is here.
         -- This turns the line into a tuple and then applies readRef to the first item
         cells = fmap ((_1 %~ readRef) . toTuple . (take 2) . (splitOn ",")) $ drop 3 ls
-        formats = zip (fmap (readRef . head . (splitOn ",")) $ drop 3 ls) (fmap (read . (flip (!!) 3) . (splitOn ",")) $ drop 3 ls)
+
+        formats = zip (fmap (readRef . head . (splitOn ",")) $ drop 3 ls) (fmap (defaultFormat . (splitOn ",")) $ drop 3 ls)
     return $ (Sheet name focus $ array (fromCoords (1,1), bound) cells, Sheet name focus $ array (fromCoords (1,1), bound) formats)
+
+
+defaultFormat :: [String] -> Format
+defaultFormat ss = maybe (FN 2) id $ ff ss
+    where
+        ff :: [String] -> Maybe Format
+        ff ss = if ((length ss) <3) then Nothing else (if ss!!2== ("-1") then (Just YMD) else (fmap (FN) (readMaybe $ ss!!2)))
+                
+        
 
 
