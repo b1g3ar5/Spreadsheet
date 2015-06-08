@@ -145,7 +145,8 @@ scomp :: Parser CellFn
 scomp = do x <- sterm;
 		   op <- compOp;
 		   y <- sterm;
-		   return $ \ss -> fmap ($ss) [x, y]
+		   return $ \ss -> fmap ($ss) [x, y] 
+		   -- gives a list of Fix Cells, need Fix Cell to be a monoid so we can add them
 
 addOps :: Parser [(Char, CellFn)]
 addOps = many addOp
