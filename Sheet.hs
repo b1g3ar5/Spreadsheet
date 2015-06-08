@@ -28,7 +28,7 @@ import Control.Comonad
 import Text.Printf
 import Data.Either.Utils (fromRight)
 import Cat
-import Refs
+import Ref
 import Value
 import Text.PrettyPrint hiding ((<>))
 import Control.Lens hiding (indices)

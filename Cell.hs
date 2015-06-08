@@ -4,17 +4,19 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Cell ( recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
+module Cell ( recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
 
 import Text.Printf
 import Control.Monad
-import Data.Array
+import Data.Array hiding ((!))
 
 import Cat
-import Refs
+import Ref
 import Value
 import Expr
 import Str
+import Sheet
+import Refs
 
 
 -- | This file describes the cell type.
@@ -22,13 +24,14 @@ import Str
 --   the Cell when it has parsed the string that has been entered in the cell.
 
 -- | A cell must contain one of the 3 Expr types or be empty
-data Cell e = CA (Arithmetic e) | CL (Logic e) | CS (Str e) | CE
+data Cell e = CA (Arithmetic e) | CL (Logic e) | CS (Str e) | CR (Refs e) | CE
 
 -- | A show function that leaves out all the type stuff
 instance Show e => Show (Cell e) where
     show (CA x) = show x
     show (CL x) = show x
     show (CS x) = show x
+    show (CR x) = show x
     show CE = ""
 
 -- | Just apply f to the contents of the Cell
@@ -36,6 +39,7 @@ instance Functor Cell where
 	fmap  f (CA x)  = CA $ fmap f x
 	fmap  f (CL x)  = CL $ fmap f x
 	fmap  f (CS x)  = CS $ fmap f x
+	fmap  f (CR x)  = CR $ fmap f x
 	fmap  f CE  = CE
 
 -- | Similarly for the Eval instance
@@ -44,6 +48,7 @@ instance Monad m => Eval Cell m where
     evalAlg (CA x) = evalAlg x
     evalAlg (CL x) = evalAlg x
     evalAlg (CS x) = evalAlg x
+    evalAlg (CR x) = evalAlg x
     evalAlg (CE) = evalAlg (CS $ SVal "")
 
 -- | For spreadsheets each cell must have a function in it from the sheet to a Fix Cell
@@ -53,6 +58,11 @@ type CellFn = Sheet (Fix Cell) -> Fix Cell
 -- | Evaluate and print the cellFns here is the LOEB!
 recalcSheet :: Sheet CellFn -> Sheet String
 recalcSheet fs = fmap (show.runId.eval) $ loeb fs
+
+-- | We need to get the refs from a CellFn before the loeb because loeb calcs the 
+-- references. I wonder if we could get a function similar to loeb to calculate
+-- the circular references?
+
 
 -- | Create an initial sheet - with numbers in it 
 emptySheet :: Int -> Int -> Sheet CellFn
@@ -66,7 +76,8 @@ printCalcedSheet :: Sheet (Fix Cell) -> IO ()
 printCalcedSheet ss = 
 	forM_ [ymin..ymax] $ \i -> do
 		forM_ [xmin..xmax] $ \j ->
-			printf "%s   " (show $ (cells wss) ! (fromCoords (j,i)))
+			--printf "%s   " (show $ (cells wss) ! (fromCoords (j,i)))
+			printf "%s   " (show $ (wss) ! (fromCoords (j,i)))
 		printf "\n"
 	where
 		xmin = x $ cRef $ fst $ bounds $ cells ss
@@ -95,6 +106,8 @@ bval :: Bool -> CellFn
 bval n = finject $ CL $ LVal n
 sval :: String -> CellFn
 sval n = finject $ CS $ SVal n
+rval :: Ref -> CellFn
+rval n = finject $ CR $ RVal [n]
 
 -- | An Error cell
 noval :: CellFn
@@ -156,6 +169,6 @@ esfunc name ps = \ss -> inject $ CS $ SFunc name $ fmap (\p -> p ss) ps
 
 -- | References
 eref :: Ref -> CellFn
-eref r = \ss-> (cells ss)!r
+eref r = \ss-> ss!r
 
 

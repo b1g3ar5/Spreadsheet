@@ -6,13 +6,14 @@ module Arithmetic ( Arithmetic(..), nFunctionMap) where
 
 import Data.Map as M hiding (map, foldl, (!))
 import Data.Maybe
+import Data.Monoid
 import Data.List hiding (and)
 import Data.Char
 import Data.Number.Erf
 import Data.Time.Calendar
 
 import Cat
-import Refs
+import Ref
 import Value
 import Sheet
 
@@ -63,35 +64,11 @@ instance (Monad m) => Eval Arithmetic m where
                            return $ n**m
     evalAlg (NRef s r) = s!r       
     evalAlg (NFunc s ps) = do
-					pss <- sequence ps
-                    -- **** NEED TO DEAL WITH Nothing HERE ****
-					let ff = fromJust $ M.lookup (map toUpper s) nFunctionMap
-					return $ ff pss;
+                    pss <- sequence ps
+                    let ff = M.lookup (map toUpper s) nFunctionMap
+                    return $ maybe (E "No such function") (\f -> f pss) ff
 
-refAlg :: (Monad m) => Arithmetic (m Value) -> m Value
-refAlg (AVal x) = return $ N x
-refAlg (Add x y) = do n <- x
-                      m <- y
-                      return $ n+m
-refAlg (Mul x y) = do n <- x
-                      m <- y
-                      return $ n*m
-refAlg (Div x y) = do n <- x
-                      m <- y
-                      return $ n / m
-refAlg (Sub x y) = do n <- x
-                      m <- y
-                      return $ n-m
-refAlg (Pow x y) = do n <- x
-                      m <- y
-                      return $ n**m
-refAlg (NRef s r) = s!r       
-refAlg (NFunc s ps) = do pss <- sequence ps
-                         -- **** NEED TO DEAL WITH Nothing HERE ****
-                         let mff = M.lookup (map toUpper s) nFunctionMap
-                         case mff of
-                            Just ff -> return $ ff pss;
-                            _ -> return $ E "Can't find function"
+
 
 -- | Look up a function
 nFunctionMap :: Map String ([Value]->Value)

@@ -14,11 +14,12 @@ import qualified Graphics.UI.Threepenny as UI
 import Graphics.UI.Threepenny.Core as C
 
 import Cat
-import Refs
+import Ref
 import Expr
 import Sheet
 import Cell
 import Parser
+import RefParser
 
 {-************************************************************************************************************
 
@@ -177,7 +178,7 @@ sheetString2 = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1),
 			, "=A1/45"]
 		colE::[String]
 		colE = [ "=\"Nick\""
-			, "=False||True"
+		    , "=False||True"
 			, "=E1"
 			, "=E2"
 			, "=B2"]
@@ -185,6 +186,42 @@ sheetString2 = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1),
 
 sheet5 :: Sheet CellFn
 sheet5 = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (5,5)) $ all
+	where
+		colA::[CellFn]
+		colA = [ (nval 1.5)
+			, (nval 1.0)
+			, eref $ fromCoords (2,3) -- ie. B3 = B2 = 7
+			, eref $ fromCoords (3,2) -- ie. C2 = 21
+			, eref $ fromCoords (2,2)] -- ie. B2 = 7
+		colB::[CellFn]
+		colB = [ (nval 10.0)
+			, (nval 7.0)
+			, eref $ fromCoords (2,2) -- B2 = 7
+			, eref $ fromCoords (4,2) -- D2 = Hello, Nick
+			, eadd (eref $ fromCoords (2,1)) (nval 41.0)] -- B1 + 41 = 10 + 41 = 51
+		colC::[CellFn]
+		colC = [ (nval 20.0) 
+			, (nval 21.0)
+			, eref $ fromCoords (2,3) -- B3 = B2 = 7
+			, eref $ fromCoords (2,2) -- B2 = 7
+			, emul (eref $ fromCoords (2,2)) (nval 43.0)] -- B2*43 = 301
+		colD::[CellFn]
+		colD = [ (nval 30.0) 
+			, econcat (sval "Hello") (sval ", Nick")
+			, eref $ fromCoords (2,3) -- B3 = B2 = 7
+			, eref $ fromCoords (1,2) -- A2 = 1
+			, ediv (eref $ fromCoords (1,1)) (nval 45.0)] -- A1 / 45 = 1.5/45 = 1/30 = 0.0333
+		colE::[CellFn]
+		colE = [ (sval "Nick")
+			, eor (bval False) (bval True)
+			, eref $ fromCoords (5,1) -- E1 = "Nick"
+			, eref $ fromCoords (5,2) -- E2 = True
+			, eref $ fromCoords (2,2)] -- B2 = 7
+		all = concat $ [colA, colB, colC, colD, colE]
+
+
+sheet6 :: Sheet CellFn
+sheet6 = Sheet "CellFn6" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (5,5)) $ all
 	where
 		colA::[CellFn]
 		colA = [ (nval 1.5)

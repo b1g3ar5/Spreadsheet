@@ -6,11 +6,12 @@ module Logic ( Logic(..), bFunctionMap) where
 
 import Data.Map as M hiding (map, foldl, (!))
 import Data.Maybe
+import Data.Monoid
 import Data.List hiding (and)
 import Data.Array
 import Data.Char
 import Cat
-import Refs
+import Ref
 import Value
 import Sheet
 
@@ -38,30 +39,30 @@ instance Functor Logic where
 
 -- |And we can evaluate it
 instance Monad m => Eval Logic m where
-	evalAlg :: Logic (m Value) -> m Value
-	evalAlg (LVal x) = return $ B x
-	evalAlg (And x y) = x >>= \n ->
-			    y >>= \m ->
-			    return $ vand n m
-	evalAlg (Or x y) = x >>= \n ->
-			    y >>= \m ->
-			    return $ vor n m
-	evalAlg (Xor x y) = x >>= \n ->
-			    y >>= \m ->
-			    return $ vxor n m
-	evalAlg (LGT x y) = x >>= \n ->
-			    y >>= \m ->
-			    return $ vgt n m
-	evalAlg (LLT x y) = x >>= \n ->
-			    y >>= \m ->
-			    return $ vlt n m
-	evalAlg (LEQ x y) = x >>= \n ->
-			    y >>= \m ->
-			    return $ veq n m
-	evalAlg (BFunc s ps) = do
-					pss <- sequence ps
-					let ff = fromJust $ M.lookup (map toUpper s) bFunctionMap
-					return $ ff pss;
+    evalAlg :: Logic (m Value) -> m Value
+    evalAlg (LVal x) = return $ B x
+    evalAlg (And x y) = x >>= \n ->
+        y >>= \m ->
+        return $ vand n m
+    evalAlg (Or x y) = x >>= \n ->
+        y >>= \m ->
+        return $ vor n m
+    evalAlg (Xor x y) = x >>= \n ->
+        y >>= \m ->
+        return $ vxor n m
+    evalAlg (LGT x y) = x >>= \n ->
+        y >>= \m ->
+        return $ vgt n m
+    evalAlg (LLT x y) = x >>= \n ->
+        y >>= \m ->
+        return $ vlt n m
+    evalAlg (LEQ x y) = x >>= \n ->
+        y >>= \m ->
+        return $ veq n m
+    evalAlg (BFunc s ps) = do
+                    pss <- sequence ps
+                    let ff = M.lookup (map toUpper s) bFunctionMap
+                    return $ maybe (E "No such function") (\f -> f pss) ff
 
 -- |Look up a function
 bFunctionMap :: Map String ([Value]->Value)

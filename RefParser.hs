@@ -10,7 +10,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Parser (parseSheet, expr, nfunc) where
+module RefParser (parseRefsSheet, refexpr) where
 
 import System.Environment
 import Text.ParserCombinators.Parsec -- hiding (string)
@@ -34,11 +34,11 @@ import Cat
 
 
 -- | Parse the user input stings to the CellFns in each cell
-parseSheet :: Sheet String -> Sheet CellFn
-parseSheet = fmap ((either (const $ sval "Parse error") id).(parse expr ""))
+parseRefsSheet :: Sheet String -> Sheet CellFn
+parseRefsSheet = fmap ((either (const $ sval "Parse error") id).(parse refexpr ""))
 
-expr :: Parser CellFn
-expr = do (try fexpr) <|> pstring
+refexpr :: Parser CellFn
+refexpr = do (try fexpr) <|> pstring
 
 -- | This is the exported parser. It parses one of a numerical, string or boolean expression
 fexpr :: Parser CellFn
@@ -77,15 +77,15 @@ nexpr = do
           first <- mulTerm
           ops <- addOps
           return $ foldl buildExpr first ops
-       where buildExpr acc ('+', x) = eadd acc x
-             buildExpr acc ('-', x) = esub acc x
+       where buildExpr acc ('+', x) = x ++ acc
+             buildExpr acc ('-', x) = x ++ acc
 
 -- | Parse a string expression
 sexpr:: Parser CellFn
 sexpr = do first <- sterm
            ops <- concatOps
            return $ foldl buildExpr first ops
-           where buildExpr acc ('&', x) = econcat acc x
+           where buildExpr acc ('&', x) = x ++ acc
 
 -- | Parse a boolean expression
 bexpr :: Parser CellFn
@@ -93,22 +93,22 @@ bexpr = do
           first <- andTerm
           ops <- orOps
           return $ foldl buildExpr first ops
-       where buildExpr acc ('|', x) = eor acc x
+       where buildExpr acc ('|', x) = x ++ acc
 
 -- | Second level of numerical terms - after addition, before powers
 mulTerm:: Parser CellFn
 mulTerm = do first <- powTerm
              ops <- mulOps
              return $ foldl buildExpr first ops
-          where buildExpr acc ('*', x) = emul acc x
-                buildExpr acc ('/', x) = ediv acc x
+          where buildExpr acc ('*', x) = x ++ acc
+                buildExpr acc ('/', x) = x ++ acc
 
 -- | Third level of numerical terms - after multiplication
 powTerm:: Parser CellFn
 powTerm = do first <- nterm
              ops <- powOps
              return $ foldl buildExpr first ops
-          where buildExpr acc ('^', x) = epow acc x
+          where buildExpr acc ('^', x) = x ++ acc
 
 -- | Parse a built in numerical function, or a numerical terminal
 nfuncTerm :: Parser CellFn
@@ -120,38 +120,32 @@ andTerm:: Parser CellFn
 andTerm = do first <- compTerm 
              ops <- andOps
              return $ foldl buildExpr first ops
-          where buildExpr acc ('&', x) = eand acc x
+          where buildExpr acc ('&', x) = x ++ acc
 
 -- This is a comparison term eg 1>3, True=False, "Nick">"Straw"
 compTerm :: Parser CellFn
 compTerm = do (try bcomp) <|> (try scomp) <|> (try ncomp) <|> (try bterm)
-
--- A Helper function for making the comparison terms
-applyCompOp :: Char -> CellFn -> CellFn -> CellFn
-applyCompOp '>' x y = egt x y
-applyCompOp '<' x y = elt x y
-applyCompOp '=' x y = eeq x y
 
 -- Numerical comparisons
 ncomp :: Parser CellFn
 ncomp = do x <- nterm;
 		   op <- compOp;
 		   y <- nterm;
-		   return $ applyCompOp op x y
+		   return $ x ++ y
 
 -- Boolean comparisons
 bcomp :: Parser CellFn
 bcomp = do x <- bterm;
 		   op <- compOp;
 		   y <- bterm;
-		   return $ applyCompOp op x y
+		   return $ x ++ y
 
 -- String comparisons
 scomp :: Parser CellFn
 scomp = do x <- sterm;
 		   op <- compOp;
 		   y <- sterm;
-		   return $ applyCompOp op x y
+		   return $ x ++ y
 
 addOps :: Parser [(Char, CellFn)]
 addOps = many addOp
@@ -243,23 +237,23 @@ qstring = do
      char '"'
      s <- manyTill (noneOf ("\"")) (char '"')
      whitespace
-     return $ sval s
+     return $ []
 
 pstring :: Parser CellFn
 pstring = do
     char '"'
     s <- manyTill (noneOf ("\"")) (char '"')
     whitespace
-    return $ sval s
+    return $ []
 
 s2b::String->Bool
 s2b s = if (map toUpper s)=="TRUE" then True else False
 
-pbool :: Parser CellFn
+pbool :: Parser  [Ref]
 pbool = do
 	 whitespace
 	 s <- string "True" <|> string "False";
-	 return $ bval $ s2b s
+	 return $ []
 
 pDigit:: Parser Char
 pDigit = oneOf ['0'..'9']
@@ -281,9 +275,7 @@ number = do sign <- pSign
             let f = read fracPart
             let e = expPart
             let value = (i + (f / 10^(length fracPart))) * 10 ^^ e
-            return $ nval $ case sign of
-                 '+' -> value
-                 '-' -> negate value
+            return $ rval []
          where pExp = option 0 $ do
                              oneOf "eE"
                              sign <- pSign
@@ -294,13 +286,12 @@ number = do sign <- pSign
 
 whitespace = many $ oneOf "\n\t\r\v "
 
-
 nfunc :: Parser CellFn
 nfunc = do
     fname <- manyTill letter (char '(')
     ps <- nexpr `sepBy` (char ',')
     char ')'
-    return $ enfunc fname ps
+    return $ concat ps
 
 
 sfunc :: Parser CellFn
@@ -309,7 +300,7 @@ sfunc = do
     fname <- manyTill letter (char '(')
     ps <- sexpr `sepBy` (char ',')
     char ')'
-    return $ esfunc fname ps
+    return $ concat ps
 
 bfunc :: Parser CellFn
 bfunc = do
@@ -317,7 +308,7 @@ bfunc = do
     fname <- manyTill letter (char '(')
     ps <- bexpr `sepBy` (char ',')
     char ')'
-    return $ ebfunc fname ps
+    return $ \ss -> concatMap (\f -> f ss) ps
 
 
 pAbs:: Parser Char
@@ -327,14 +318,14 @@ pAlpha :: Parser Char
 pAlpha = oneOf "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-nRef :: Parser CellFn
-nRef = fmap eref pRef
+nRef :: Parser  [Ref]
+nRef = fmap (\x->[x]) pRef
 
-bRef :: Parser CellFn
-bRef = fmap eref pRef
+bRef :: Parser  [Ref]
+bRef = fmap (\x->[x]) pRef
 
-sRef :: Parser CellFn
-sRef = fmap eref pRef
+sRef :: Parser  [Ref]
+sRef = fmap (\x->[x]) pRef
 
 pRef :: Parser Ref
 pRef = try pAbsAbs <|> try pAbsRel <|> try pRelAbs <|> pRelRel

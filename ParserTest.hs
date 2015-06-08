@@ -28,14 +28,14 @@ import Parser
 import Sheet
 import Cell
 import Expr
-import Refs
+import Ref
 import Cat
 
 
 main = do
-		putStrLn $ showCparse "=3*1"
+--		putStrLn $ showCparse "=3*1"
 		putStrLn $ "Now the sequence\n"
-		sequence $ map (putStrLn.(\s -> s ++ ": " ++ showCparse s)) ss
+--		sequence $ map (putStrLn.(\s -> s ++ ": " ++ showCparse s)) ss
 		putStrLn $ "Finished the sequence\n"
 		putStrLn $ "Now the cfixed sheet\n"
 		printCalcedSheet $ sheet =>> wfix
@@ -62,7 +62,7 @@ vsheet = (runId.eval) <$> calcedSheet
 r::Ref
 r = fromCoords(2,2)
 
-showCparse s = show $ fromRight $ parse expr "" s
+--showCparse s = show $ fromRight $ parse expr "" s
 
 s1 :: String
 s1 = "=3*a1"

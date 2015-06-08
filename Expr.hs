@@ -24,11 +24,12 @@ import Data.String
 import Data.Char
 
 import Cat
-import Refs
+import Ref
 import Value
 import Arithmetic
 import Logic
 import Str
+import Refs
 import Sheet
 
 

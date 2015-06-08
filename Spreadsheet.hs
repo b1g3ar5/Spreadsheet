@@ -35,11 +35,12 @@ import Control.Concurrent.STM
 
 import Cat
 import Value
-import Refs
+import Ref
 import Expr
 import Sheet
 import Cell
 import Parser
+import RefParser
 import SpreadsheetTest
 
 
@@ -47,6 +48,45 @@ import SpreadsheetTest
 
 -- 1. Add checking of circular references when text is entered
 -- 2. Add vlookup, hlookup and index functions
+
+
+-- Thinking about circular refs...
+-- We can't get the refs from a CellFn because it's just a function from a Sheet of Cells to a Cell,
+-- for the same reason that we can't Show it.
+-- This means that we need to get the refs from the input string or during the parse of the input string.
+-- Currently the parser expr returns a Parser CellFn, what about returning  (CellFn, [Ref])?
+-- Well pRef returns a ref, we could tuple that up with the CellFn in nref and put [] in everything else?
+-- This works - see RefParser.hs
+-- Now we only get direct refs here - it's not recursive.
+-- loeb works because every cell has a function from a sheet to a Value
+-- so Refs just get the value from the other cell when they are loebed.
+-- So, to use loeb we need functions in each cell to a list of Refs, then loeb will
+-- give a sheet of lists of refs.
+
+-- loeb :: Sheet CellFn -> Sheet (Fix Cell)
+-- evalAlg :: Cell (Fix Value)-> Fix Value
+-- cata :: Cell (Fix Value)-> Fix Value -> Fix Cell -> Fix Value
+-- eval :: Fix Cell -> Fix Value
+-- runId :: Fix Value -> Value
+-- show :: Value -> String
+
+-- What about adding a Ref constructor for the Value type?
+-- We could have a evalRef in the Eval class - then we would get
+-- the same calculation as above but end with the Value being a Ref?
+
+-- Well then we get the Eval class which evaluates to a Value
+-- We have Arithmetic, Logic, Str which are instances of the Eval type
+-- Now Arithmetic evalAlg goes to a N Double
+
+-- So, if we add a Ref type to Value and add a refAlg to the Eval class we might get somewhere?
+-- No - because when we apply loeb we lose the references, so when we apply evalAlg we
+-- have already lost the ref information - so refAlg is not the answer.
+
+-- We need the parser to produce a different CellFn as well.
+-- The current CellFn takes a sheet and calculates a Fix Cell, for example nval 1.0
+-- The new parser will need to return a list of refs, so we need a new Ref (effect)
+
+
 
 main :: IO ()
 main = do   

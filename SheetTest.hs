@@ -37,7 +37,7 @@ import Control.Concurrent.STM.TVar
 import Control.Concurrent.STM
 
 import Cat
-import Refs
+import Ref
 import Expr
 import Sheet
 import Cell

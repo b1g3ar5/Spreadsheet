@@ -6,6 +6,7 @@
 module Value ( showWithFormat, Format(..), Value(..), Eval(..), eval, vand, vor, vxor, vgt, vlt, veq, ccat) where
 
 import Data.String
+import Data.Monoid
 import Data.Number.Erf as E
 import Data.Time.Calendar
 import Data.Time.Format
@@ -13,13 +14,19 @@ import Text.Read (readMaybe)
 import System.Locale
 
 import Cat
+import Ref
 
 -- | This is the type that a cell evaluates to. E is for ERROR and is not implemented yet
 data Value where
 	N :: Double -> Value
 	B :: Bool -> Value
 	S :: String -> Value
+	R :: [Ref] -> Value
 	E :: String -> Value deriving (Eq, Ord)
+
+instance Monoid Value where
+    mempty = R []
+    mappend (R xs) (R ys) = R $ xs ++ ys
 
 -- | Make Value an instance of Num
 instance Num Value where
