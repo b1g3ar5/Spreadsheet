@@ -11,6 +11,8 @@ import Data.List hiding (and)
 import Data.Char
 import Data.Number.Erf
 import Data.Time.Calendar
+import Control.Monad
+import Data.Foldable hiding (sum)
 
 import Cat
 import Ref
@@ -43,25 +45,26 @@ instance Functor Arithmetic where
 	fmap f (NFunc s ps) = NFunc s (map f ps)
 	fmap f (NRef s r) = NRef (fmap f s) r
 
+instance Foldable Arithmetic where
+	foldMap f (AVal x)  = AVal $ f x
+	foldMap f (Add x y)  = Add (foldMap f x) (foldMap f y)
+	foldMap f (Mul x y)  = Mul (foldMap f x) (foldMap f y)
+	foldMap f (Div x y)  = Div (foldMap f x) (foldMap f y)
+	foldMap f (Sub x y)  = Sub (foldMap f x) (foldMap f y)
+	foldMap f (Pow x y)  = Pow (foldMap f x) (foldMap f y)
+	foldMap f (NFunc s ps) = NFunc s (foldMap f ps)
+	foldMap f (NRef s r) = NRef (fmap f s) r
+    
+
 -- | The Arithmetic type is in the Eval class
 instance (Monad m) => Eval Arithmetic m where
     evalAlg :: Arithmetic (m Value) -> m Value
     evalAlg (AVal x) = return $ N x
-    evalAlg (Add x y) = do n <- x
-                           m <- y
-                           return $ n+m;
-    evalAlg (Mul x y) = do n<-x
-                           m<-y
-                           return $ n*m
-    evalAlg (Div x y) = do n<-x
-                           m<-y
-                           return $ n / m
-    evalAlg (Sub x y) = do n<-x
-                           m<-y
-                           return $ n-m
-    evalAlg (Pow x y) = do n<-x
-                           m<-y
-                           return $ n**m
+    evalAlg (Add x y) = liftM2 (+) x y
+    evalAlg (Mul x y) = liftM2 (*) x y
+    evalAlg (Div x y) = liftM2 (/) x y
+    evalAlg (Sub x y) = liftM2 (-) x y
+    evalAlg (Pow x y) = liftM2 (**) x y
     evalAlg (NRef s r) = s!r       
     evalAlg (NFunc s ps) = do
                     pss <- sequence ps

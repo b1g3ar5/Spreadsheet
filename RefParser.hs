@@ -145,7 +145,7 @@ scomp :: Parser CellFn
 scomp = do x <- sterm;
 		   op <- compOp;
 		   y <- sterm;
-		   return $ x ++ y
+		   return $ \ss -> fmap ($ss) [x, y]
 
 addOps :: Parser [(Char, CellFn)]
 addOps = many addOp
@@ -237,23 +237,23 @@ qstring = do
      char '"'
      s <- manyTill (noneOf ("\"")) (char '"')
      whitespace
-     return $ []
+     return $ rval []
 
 pstring :: Parser CellFn
 pstring = do
     char '"'
     s <- manyTill (noneOf ("\"")) (char '"')
     whitespace
-    return $ []
+    return $ rval []
 
 s2b::String->Bool
 s2b s = if (map toUpper s)=="TRUE" then True else False
 
-pbool :: Parser  [Ref]
+pbool :: Parser CellFn
 pbool = do
 	 whitespace
 	 s <- string "True" <|> string "False";
-	 return $ []
+	 return $ rval []
 
 pDigit:: Parser Char
 pDigit = oneOf ['0'..'9']
@@ -291,7 +291,7 @@ nfunc = do
     fname <- manyTill letter (char '(')
     ps <- nexpr `sepBy` (char ',')
     char ')'
-    return $ concat ps
+    return $ rval [] -- concat ps
 
 
 sfunc :: Parser CellFn
@@ -300,7 +300,7 @@ sfunc = do
     fname <- manyTill letter (char '(')
     ps <- sexpr `sepBy` (char ',')
     char ')'
-    return $ concat ps
+    return $ rval [] -- concat ps
 
 bfunc :: Parser CellFn
 bfunc = do
@@ -308,7 +308,7 @@ bfunc = do
     fname <- manyTill letter (char '(')
     ps <- bexpr `sepBy` (char ',')
     char ')'
-    return $ \ss -> concatMap (\f -> f ss) ps
+    return $ rval [] -- \ss -> fmap (\f -> f ss) ps
 
 
 pAbs:: Parser Char
@@ -318,14 +318,14 @@ pAlpha :: Parser Char
 pAlpha = oneOf "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-nRef :: Parser  [Ref]
-nRef = fmap (\x->[x]) pRef
+nRef :: Parser CellFn
+nRef = fmap (\x->rval [x]) pRef
 
-bRef :: Parser  [Ref]
-bRef = fmap (\x->[x]) pRef
+bRef :: Parser CellFn
+bRef = fmap (\x->rval [x]) pRef
 
-sRef :: Parser  [Ref]
-sRef = fmap (\x->[x]) pRef
+sRef :: Parser CellFn
+sRef = fmap (\x->rval [x]) pRef
 
 pRef :: Parser Ref
 pRef = try pAbsAbs <|> try pAbsRel <|> try pRelAbs <|> pRelRel

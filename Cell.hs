@@ -106,8 +106,11 @@ bval :: Bool -> CellFn
 bval n = finject $ CL $ LVal n
 sval :: String -> CellFn
 sval n = finject $ CS $ SVal n
-rval :: Ref -> CellFn
-rval n = finject $ CR $ RVal [n]
+rval :: [Ref] -> CellFn
+rval ns = finject $ CR $ Refs ns
+
+
+
 
 -- | An Error cell
 noval :: CellFn
