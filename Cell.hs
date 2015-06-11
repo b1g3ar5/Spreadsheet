@@ -9,6 +9,8 @@ module Cell ( recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, n
 import Text.Printf
 import Control.Monad
 import Data.Array hiding ((!))
+import Data.Foldable hiding (forM_, fold, or)
+import Data.Monoid
 
 import Cat
 import Ref
@@ -50,6 +52,12 @@ instance Monad m => Eval Cell m where
     evalAlg (CS x) = evalAlg x
     evalAlg (CR x) = evalAlg x
     evalAlg (CE) = evalAlg (CS $ SVal "")
+
+-- This is just cata
+--fold :: Functor f => (f b -> b) -> Fix f -> b
+--fold f = go
+--    where go (Fix t) = f . fmap go $ t
+
 
 -- | For spreadsheets each cell must have a function in it from the sheet to a Fix Cell
 --   then we can use moeb, loeb and the comonad stuff - wfix and cfix

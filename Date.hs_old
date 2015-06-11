@@ -1,0 +1,50 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE InstanceSigs #-}
+
+module Date ( Date(..), dFunctionMap) where
+
+import Data.Map as M hiding (map, foldl, (!))
+import Data.Maybe
+import Data.List hiding (and)
+import Data.Array
+import Data.Char
+import Data.Time.Calendar
+
+import Cat
+import Refs
+import Value
+import Sheet
+
+-- | The expression for string calculations
+data Date e = DVal Day 
+		| DAdd e e
+		| DRef (Sheet e) Ref
+		| DFunc String  [e] deriving (Show)
+
+instance Functor Date where
+	fmap f (DVal x)  = DVal x
+	fmap f (DFunc s ps) = DFunc s (map f ps)
+
+
+instance Monad m => Eval Date m where
+	evalAlg :: Date (m Value) -> m Value
+	evalAlg (DVal x) = return $ D x
+	evalAlg (DFunc s ps) = do
+					pss <- sequence ps
+					let ff = fromJust $ M.lookup (map toUpper s) dFunctionMap
+					return $ ff pss;
+
+-- | Look up a built in string function
+dFunctionMap :: Map String ([Value]->Value)
+dFunctionMap = fromList [   ("EDATE", edate)
+              ]
+
+-- Not sure about these - how do we check that the number of parmaeters is right?
+-- Need to start using the error stuff
+edate :: [Value] -> Value
+edate [] = E "Need 2 parameters for edate"
+edate (D start:N ms: S s:[]) = D $ addGregorianMonthsClip (round ms) start
+edate _ = E "Need 2 parameters for edate, one number and one date"
+
+

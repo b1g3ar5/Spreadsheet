@@ -33,8 +33,9 @@ data Arithmetic e = AVal Double
 		| NFunc String  [e] deriving (Show)
 
 -- | Make all the expression types functors
+-- This is not a proper functor because of AVal Double
 instance Functor Arithmetic where
-	fmap f (AVal x)  = AVal x
+	fmap f (AVal x)  = AVal $ x
 	fmap f (Add x y)  = Add (f x) (f y)
 	fmap f (Mul x y)  = Mul (f x) (f y)
 	fmap f (Div x y)  = Div (f x) (f y)
@@ -42,6 +43,12 @@ instance Functor Arithmetic where
 	fmap f (Pow x y)  = Pow (f x) (f y)
 	fmap f (NFunc s ps) = NFunc s (map f ps)
 	fmap f (NRef s r) = NRef (fmap f s) r
+
+-- This is the monoid over addition
+--instance Monoid e => Monoid (Arithmetic e) where
+--    mempty = AVal 0.0
+--    mappend f g  = fmap (\x -> fmap ((+) x) f) g
+
 
 -- | The Arithmetic type is in the Eval class
 instance (Monad m) => Eval Arithmetic m where

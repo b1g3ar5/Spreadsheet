@@ -44,49 +44,92 @@ import RefParser
 import SpreadsheetTest
 
 
--- TO DO
+{-
+ TO DO
 
--- 1. Add checking of circular references when text is entered
--- 2. Add vlookup, hlookup and index functions
-
-
--- Thinking about circular refs...
--- We can't get the refs from a CellFn because it's just a function from a Sheet of Cells to a Cell,
--- for the same reason that we can't Show it.
--- This means that we need to get the refs from the input string or during the parse of the input string.
--- Currently the parser expr returns a Parser CellFn, what about returning  (CellFn, [Ref])?
--- Well pRef returns a ref, we could tuple that up with the CellFn in nref and put [] in everything else?
--- This works - see RefParser.hs
--- Now we only get direct refs here - it's not recursive.
--- loeb works because every cell has a function from a sheet to a Value
--- so Refs just get the value from the other cell when they are loebed.
--- So, to use loeb we need functions in each cell to a list of Refs, then loeb will
--- give a sheet of lists of refs.
-
--- loeb :: Sheet CellFn -> Sheet (Fix Cell)
--- evalAlg :: Cell (Fix Value)-> Fix Value
--- cata :: Cell (Fix Value)-> Fix Value -> Fix Cell -> Fix Value
--- eval :: Fix Cell -> Fix Value
--- runId :: Fix Value -> Value
--- show :: Value -> String
-
--- What about adding a Ref constructor for the Value type?
--- We could have a evalRef in the Eval class - then we would get
--- the same calculation as above but end with the Value being a Ref?
-
--- Well then we get the Eval class which evaluates to a Value
--- We have Arithmetic, Logic, Str which are instances of the Eval type
--- Now Arithmetic evalAlg goes to a N Double
-
--- So, if we add a Ref type to Value and add a refAlg to the Eval class we might get somewhere?
--- No - because when we apply loeb we lose the references, so when we apply evalAlg we
--- have already lost the ref information - so refAlg is not the answer.
-
--- We need the parser to produce a different CellFn as well.
--- The current CellFn takes a sheet and calculates a Fix Cell, for example nval 1.0
--- The new parser will need to return a list of refs, so we need a new Ref (effect)
+1. Add checking of circular references when text is entered
+2. Add vlookup, hlookup and index functions
 
 
+Thinking about circular refs...
+We can't get the refs from a CellFn because it's just a function from a Sheet of Cells to a Cell,
+for the same reason that we can't Show it.
+This means that we need to get the refs from the input string or during the parse of the input string.
+Currently the parser expr returns a Parser CellFn, what about returning  (CellFn, [Ref])?
+Well pRef returns a ref, we could tuple that up with the CellFn in nref and put [] in everything else?
+This works - see RefParser.hs
+Now we only get direct refs here - it's not recursive.
+loeb works because every cell has a function from a sheet to a Value
+so Refs just get the value from the other cell when they are loebed.
+So, to use loeb we need functions in each cell to a list of Refs, then loeb will
+give a sheet of lists of refs.
+
+loeb :: Sheet CellFn -> Sheet (Fix Cell)
+evalAlg :: Cell (Fix Value)-> Fix Value
+cata :: Cell (Fix Value)-> Fix Value -> Fix Cell -> Fix Value
+eval :: Fix Cell -> Fix Value
+runId :: Fix Value -> Value
+show :: Value -> String
+
+What about adding a Ref constructor for the Value type?
+We could have a evalRef in the Eval class - then we would get
+the same calculation as above but end with the Value being a Ref?
+
+Well then we get the Eval class which evaluates to a Value
+We have Arithmetic, Logic, Str which are instances of the Eval type
+Now Arithmetic evalAlg goes to a N Double
+
+So, if we add a Ref type to Value and add a refAlg to the Eval class we might get somewhere?
+No - because when we apply loeb we lose the references, so when we apply evalAlg we
+have already lost the ref information - so refAlg is not the answer.
+
+We need the parser to produce a different CellFn as well.
+The current CellFn takes a sheet and calculates a Fix Cell, for example nval 1.0
+The new parser will need to return a list of refs, so we need a new Ref (effect)
+
+I got a circular recalc working in Loeb.hs in my Comonads directory
+How it works is as follows:
+
+Parse the cell to a list of CellFns - one for each ref in the parse.
+
+parsedCell:: [Sheet a->a]
+
+make a a Bool (ie. cells without refs are just False) and use
+
+forr :: [[Bool]->Bool] -> [Bool] -> Bool
+forr fs = \s -> or $ fmap ($s) fs
+
+to turn the list of functions into one function:
+
+forr parsedCell :: CellFn
+ 
+then we can apply this function to the saved sheet - just replacing the 
+cell that we are trying to fill with True.
+
+This will then return True when the user input would cause a circular 
+reference.
+
+So to implement this we need a Fix Cell which is a Bool and we have 
+to parse to this.
+
+So should we put 4 copies of the sheet in our IORef - one for the user input
+one for the normal parse, the one for the formats of the cells and the one for the
+circular reference parse?
+
+Looking at the forr function
+
+forr :: [[Bool]->Bool] -> [Bool] -> Bool
+
+we have CellFns so this will be so we'll be going from a list of CellFns, which is
+a list of [Sheet (Fix Cell)-> Fix Cell], so we will have
+
+forr :: [Sheet (Fix Cell)-> Fix Cell] -> Sheet (Fix Cell) -> Fix Cell
+
+The same implementation will work if we have an 'or' function for (Fix Cell)
+which is the same as having an 'or' function for Cell?
+
+
+-}
 
 main :: IO ()
 main = do   

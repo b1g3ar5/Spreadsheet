@@ -18,7 +18,7 @@ import Control.Applicative ((<*), (<$>), (<*>))
 import Control.Monad (liftM)
 import Data.Array
 import Data.Char
-import Data.Map as M hiding (map, foldl)
+import Data.Map as M hiding (map, foldl, foldr, fold)
 import Data.Maybe
 import Data.Either (rights)
 import Data.Either.Utils (fromRight)
@@ -237,23 +237,23 @@ qstring = do
      char '"'
      s <- manyTill (noneOf ("\"")) (char '"')
      whitespace
-     return $ []
+     return $ bval False
 
 pstring :: Parser CellFn
 pstring = do
     char '"'
     s <- manyTill (noneOf ("\"")) (char '"')
     whitespace
-    return $ []
+    return $ bval False
 
 s2b::String->Bool
 s2b s = if (map toUpper s)=="TRUE" then True else False
 
-pbool :: Parser  [Ref]
+pbool :: Parser CellFn
 pbool = do
 	 whitespace
 	 s <- string "True" <|> string "False";
-	 return $ []
+	 return $ bval False
 
 pDigit:: Parser Char
 pDigit = oneOf ['0'..'9']
@@ -275,7 +275,8 @@ number = do sign <- pSign
             let f = read fracPart
             let e = expPart
             let value = (i + (f / 10^(length fracPart))) * 10 ^^ e
-            return $ rval []
+            -- Just return False - there are no references in a number
+            return $ bval False
          where pExp = option 0 $ do
                              oneOf "eE"
                              sign <- pSign
@@ -286,30 +287,29 @@ number = do sign <- pSign
 
 whitespace = many $ oneOf "\n\t\r\v "
 
-nfunc :: Parser CellFn
+nfunc :: Parser [CellFn]
 nfunc = do
     fname <- manyTill letter (char '(')
     ps <- nexpr `sepBy` (char ',')
     char ')'
-    return $ concat ps
+    return ps
 
 
-sfunc :: Parser CellFn
+sfunc :: Parser [CellFn]
 sfunc = do
     char '@'
     fname <- manyTill letter (char '(')
     ps <- sexpr `sepBy` (char ',')
     char ')'
-    return $ concat ps
+    return ps
 
-bfunc :: Parser CellFn
+bfunc :: Parser [CellFn]
 bfunc = do
     char '@'
     fname <- manyTill letter (char '(')
     ps <- bexpr `sepBy` (char ',')
     char ')'
-    return $ \ss -> concatMap (\f -> f ss) ps
-
+    return $ ps
 
 pAbs:: Parser Char
 pAbs = char '$'
@@ -318,14 +318,14 @@ pAlpha :: Parser Char
 pAlpha = oneOf "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-nRef :: Parser  [Ref]
-nRef = fmap (\x->[x]) pRef
+nRef :: Parser CellFn
+nRef = fmap eref pRef
 
-bRef :: Parser  [Ref]
-bRef = fmap (\x->[x]) pRef
+bRef :: Parser CellFn
+bRef = fmap eref pRef
 
-sRef :: Parser  [Ref]
-sRef = fmap (\x->[x]) pRef
+sRef :: Parser CellFn
+sRef = fmap eref pRef
 
 pRef :: Parser Ref
 pRef = try pAbsAbs <|> try pAbsRel <|> try pRelAbs <|> pRelRel
