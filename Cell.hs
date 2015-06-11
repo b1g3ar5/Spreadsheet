@@ -44,6 +44,14 @@ instance Functor Cell where
 	fmap  f (CR x)  = CR $ fmap f x
 	fmap  f CE  = CE
 
+instance Foldable Cell where
+	foldMap  f (CA x)  = CA $ foldMap f x
+	foldMap  f (CL x)  = CL $ foldMap f x
+	foldMap  f (CS x)  = CS $ foldMap f x
+	foldMap  f (CR x)  = CR $ foldMap f x
+	foldMap  f CE  = CE
+
+
 -- | Similarly for the Eval instance
 instance Monad m => Eval Cell m where
     evalAlg :: Cell (m Value) -> m Value
@@ -62,6 +70,9 @@ instance Monad m => Eval Cell m where
 -- | For spreadsheets each cell must have a function in it from the sheet to a Fix Cell
 --   then we can use moeb, loeb and the comonad stuff - wfix and cfix
 type CellFn = Sheet (Fix Cell) -> Fix Cell
+
+
+
 
 -- | Evaluate and print the cellFns here is the LOEB!
 recalcSheet :: Sheet CellFn -> Sheet String
@@ -114,8 +125,11 @@ bval :: Bool -> CellFn
 bval n = finject $ CL $ LVal n
 sval :: String -> CellFn
 sval n = finject $ CS $ SVal n
-rval :: Ref -> CellFn
-rval n = finject $ CR $ RVal [n]
+rval :: [Ref] -> CellFn
+rval ns = finject $ CR $ Refs ns
+
+
+
 
 -- | An Error cell
 noval :: CellFn
