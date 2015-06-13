@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Cell ( recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
+module Cell ( cfor, cfadd, recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
 
 import Text.Printf
 import Control.Monad
@@ -44,14 +44,6 @@ instance Functor Cell where
 	fmap  f (CR x)  = CR $ fmap f x
 	fmap  f CE  = CE
 
-instance Foldable Cell where
-	foldMap  f (CA x)  = CA $ foldMap f x
-	foldMap  f (CL x)  = CL $ foldMap f x
-	foldMap  f (CS x)  = CS $ foldMap f x
-	foldMap  f (CR x)  = CR $ foldMap f x
-	foldMap  f CE  = CE
-
-
 -- | Similarly for the Eval instance
 instance Monad m => Eval Cell m where
     evalAlg :: Cell (m Value) -> m Value
@@ -61,18 +53,51 @@ instance Monad m => Eval Cell m where
     evalAlg (CR x) = evalAlg x
     evalAlg (CE) = evalAlg (CS $ SVal "")
 
--- This is just cata
---fold :: Functor f => (f b -> b) -> Fix f -> b
---fold f = go
---    where go (Fix t) = f . fmap go $ t
 
+unEvalAlg :: (Monad m) => Value -> Cell (m Value)
+unEvalAlg (N x) = CA $ AVal x
+unEvalAlg (B x) = CL $ LVal x
+unEvalAlg (S x) = CS $ SVal x
+unEvalAlg (R x) = CR $ Refs x
+unEvalAlg (E x) = CE
+
+--csum :: (Monad m ) => [Cell (m Value)] -> Cell (m Value)
+--csum [] = CA $ AVal 0.0
+--csum (a:[]) = a
+--csum (a:as) = CA $ Add (evalAlg a) (evalAlg $ csum as)
+
+--cor :: (Monad m ) => [Cell (m Value)] -> Cell (m Value)
+--cor [] = CL $ LVal False
+--cor (a:[]) = a
+--cor (a:as) = CL $ Or (evalAlg a) (evalAlg $ csum as)
 
 -- | For spreadsheets each cell must have a function in it from the sheet to a Fix Cell
 --   then we can use moeb, loeb and the comonad stuff - wfix and cfix
 type CellFn = Sheet (Fix Cell) -> Fix Cell
 
+-- | Ors 2 CellFns
+-- This uses the or function for the Value type which only works for booleans
+-- So, it returns the Fix Cell for the bool or an Error
+cfor :: CellFn -> CellFn -> CellFn
+cfor x y = \ss -> fixup $ vor (runId $ eval $ x ss) (runId $ eval $ y ss)
+    where
+        fixup (B x) = inject $ CL $ LVal x
+        fixup (_) = inject $ CE
 
+-- | Adds 2 CellFns
+-- This uses the add function for the Value type which only works for numbers
+-- So, it returns the Fix Cell for the number or an Error
+cfadd :: CellFn -> CellFn -> CellFn
+cfadd x y = \ss -> fixup $ vadd (runId $ eval $ x ss) (runId $ eval $ y ss)
+    where
+        fixup (N z) = nval0 z
+        fixup (_) = err0
 
+fcadd :: Fix Cell -> Fix Cell -> Fix Cell
+fcadd c1 c2 = fixup $ vadd (runId $ eval c1) (runId $ eval c2)
+    where
+        fixup (N z) = nval0 z
+        fixup (_) = err0
 
 -- | Evaluate and print the cellFns here is the LOEB!
 recalcSheet :: Sheet CellFn -> Sheet String
@@ -119,6 +144,20 @@ instance Sheet :<: Cell where
 -- | Some helper functions to inject types into CellFns
 
 -- | Simple constant cells
+nval0 :: Double -> Fix Cell
+nval0 n = inject $ CA $ AVal n
+bval0 :: Bool -> Fix Cell
+bval0 n = inject $ CL $ LVal n
+sval0 :: String -> Fix Cell
+sval0 n = inject $ CS $ SVal n
+rval0 :: [Ref] -> Fix Cell
+rval0 ns = inject $ CR $ Refs ns
+err0 :: Fix Cell
+err0 = inject CE
+
+-- | Some helper functions to inject types into CellFns
+
+-- | Simple constant cells
 nval :: Double -> CellFn
 nval n = finject $ CA $ AVal n
 bval :: Bool -> CellFn
@@ -127,9 +166,6 @@ sval :: String -> CellFn
 sval n = finject $ CS $ SVal n
 rval :: [Ref] -> CellFn
 rval ns = finject $ CR $ Refs ns
-
-
-
 
 -- | An Error cell
 noval :: CellFn

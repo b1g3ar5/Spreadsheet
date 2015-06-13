@@ -14,7 +14,7 @@
 --module Spreadsheet (e1, e2, e3, v1, v2, v3, e, val, vat, sheet2, sheet3, sheet4, sheet5, wfixTest
 --                    , wfixTest2, wfixTest3, wfixTest4, wfixTest5, r4, cr4, v4, setBlur, UI.setFocus, setup, getCell, renderCell, ee) where
 
-import Data.Array hiding ((!))
+import Data.Array hiding ((!),(//))
 import Data.Maybe
 import Data.Foldable as F hiding (concatMap)
 import Data.List.Split hiding (split)
@@ -52,9 +52,14 @@ import SpreadsheetTest
 
 
 Thinking about circular refs...
+
 We can't get the refs from a CellFn because it's just a function from a Sheet of Cells to a Cell,
-for the same reason that we can't Show it.
-This means that we need to get the refs from the input string or during the parse of the input string.
+for the same reason that we can't Show it - all we cab do is apply it.
+
+Can we get the refs from the input string or during the parse of the input string?
+
+Well we can parse the input string to a CellFn returning the fold of or over all the other cells
+
 Currently the parser expr returns a Parser CellFn, what about returning  (CellFn, [Ref])?
 Well pRef returns a ref, we could tuple that up with the CellFn in nref and put [] in everything else?
 This works - see RefParser.hs
@@ -128,6 +133,15 @@ forr :: [Sheet (Fix Cell)-> Fix Cell] -> Sheet (Fix Cell) -> Fix Cell
 The same implementation will work if we have an 'or' function for (Fix Cell)
 which is the same as having an 'or' function for Cell?
 
+Check Circular References
+=========================
+1. Parse with parseRefsSheet
+2. Replace the current cell with rvalTrue
+3. Call loeb
+4. If all other cells are false then Ok
+5. Make a list of the True cells - stick it in a output field somewhere
+6. Make use amend input
+
 
 -}
 
@@ -177,8 +191,9 @@ setup rSheets window = void $ do
                         let (str, fmt) = split cstr
                         liftIO $ updateSheet (str, fmt, ref) rSheets
                         (newInput, newFormat) <- liftIO $ readIORef rSheets
-                        let output = recalcSheet $ parseSheet newInput
-                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (showWithFormat (newFormat!ref) $ output!ref))
+                        --let output = recalcSheet $ parseSheet newInput
+                        let circ = recalcSheet $ parseRefsSheet newInput
+                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (showWithFormat (newFormat!ref) $ circ!ref))
                     )
         
     -- After all this we need to get the cells to display the user input when on focus
@@ -232,8 +247,8 @@ uiApply cellss f = sequence $ map (\(cs, row) ->
 updateSheet :: (String, Format, Ref)->IORef (Sheet String, Sheet Format) -> IO ()
 updateSheet (str, fmt, ref) rSheet = do
     (oldSheet, oldFormat) <- liftIO $ readIORef rSheet
-    let newSheet = Sheet (name oldSheet) (focus oldSheet) $ (cells oldSheet)//[(ref,str)] 
-    let newFormat = Sheet (name oldFormat) (focus oldFormat) $ (cells oldFormat)//[(ref,fmt)] 
+    let newSheet = oldSheet//[(ref,str)] 
+    let newFormat = oldFormat//[(ref,fmt)] 
     liftIO $ writeIORef rSheet (newSheet, newFormat)
         
 -- | This just makes a simple cell with an id and a tabindex and no behaviour

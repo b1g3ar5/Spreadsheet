@@ -77,15 +77,15 @@ nexpr = do
           first <- mulTerm
           ops <- addOps
           return $ foldl buildExpr first ops
-       where buildExpr acc ('+', x) = x ++ acc
-             buildExpr acc ('-', x) = x ++ acc
+       where buildExpr acc ('+', x) = cfadd x acc
+             buildExpr acc ('-', x) = cfadd x acc
 
 -- | Parse a string expression
 sexpr:: Parser CellFn
 sexpr = do first <- sterm
            ops <- concatOps
            return $ foldl buildExpr first ops
-           where buildExpr acc ('&', x) = x ++ acc
+           where buildExpr acc ('&', x) = cfadd x acc
 
 -- | Parse a boolean expression
 bexpr :: Parser CellFn
@@ -93,22 +93,22 @@ bexpr = do
           first <- andTerm
           ops <- orOps
           return $ foldl buildExpr first ops
-       where buildExpr acc ('|', x) = x ++ acc
+       where buildExpr acc ('|', x) = cfadd x acc
 
 -- | Second level of numerical terms - after addition, before powers
 mulTerm:: Parser CellFn
 mulTerm = do first <- powTerm
              ops <- mulOps
              return $ foldl buildExpr first ops
-          where buildExpr acc ('*', x) = x ++ acc
-                buildExpr acc ('/', x) = x ++ acc
+          where buildExpr acc ('*', x) = cfadd x acc
+                buildExpr acc ('/', x) = cfadd x acc
 
 -- | Third level of numerical terms - after multiplication
 powTerm:: Parser CellFn
 powTerm = do first <- nterm
              ops <- powOps
              return $ foldl buildExpr first ops
-          where buildExpr acc ('^', x) = x ++ acc
+          where buildExpr acc ('^', x) = cfadd x acc
 
 -- | Parse a built in numerical function, or a numerical terminal
 nfuncTerm :: Parser CellFn
@@ -120,7 +120,7 @@ andTerm:: Parser CellFn
 andTerm = do first <- compTerm 
              ops <- andOps
              return $ foldl buildExpr first ops
-          where buildExpr acc ('&', x) = x ++ acc
+          where buildExpr acc ('&', x) = cfadd x acc
 
 -- This is a comparison term eg 1>3, True=False, "Nick">"Straw"
 compTerm :: Parser CellFn
@@ -131,21 +131,21 @@ ncomp :: Parser CellFn
 ncomp = do x <- nterm;
 		   op <- compOp;
 		   y <- nterm;
-		   return $ x ++ y
+		   return $ cfadd x y 
 
 -- Boolean comparisons
 bcomp :: Parser CellFn
 bcomp = do x <- bterm;
 		   op <- compOp;
 		   y <- bterm;
-		   return $ x ++ y
+		   return $ cfadd x y 
 
 -- String comparisons
 scomp :: Parser CellFn
 scomp = do x <- sterm;
 		   op <- compOp;
 		   y <- sterm;
-		   return $ \ss -> fmap ($ss) [x, y] 
+		   return $ cfadd x y 
 		   -- gives a list of Fix Cells, need Fix Cell to be a monoid so we can add them
 
 addOps :: Parser [(Char, CellFn)]
@@ -238,14 +238,14 @@ qstring = do
      char '"'
      s <- manyTill (noneOf ("\"")) (char '"')
      whitespace
-     return $ bval False
+     return $ nval 0.0
 
 pstring :: Parser CellFn
 pstring = do
     char '"'
     s <- manyTill (noneOf ("\"")) (char '"')
     whitespace
-    return $ bval False
+    return $ nval 0.0
 
 s2b::String->Bool
 s2b s = if (map toUpper s)=="TRUE" then True else False
@@ -254,7 +254,7 @@ pbool :: Parser CellFn
 pbool = do
 	 whitespace
 	 s <- string "True" <|> string "False";
-	 return $ bval False
+	 return $ nval 0.0
 
 pDigit:: Parser Char
 pDigit = oneOf ['0'..'9']
@@ -276,8 +276,7 @@ number = do sign <- pSign
             let f = read fracPart
             let e = expPart
             let value = (i + (f / 10^(length fracPart))) * 10 ^^ e
-            -- Just return False - there are no references in a number
-            return $ bval False
+            return $ nval 0.0
          where pExp = option 0 $ do
                              oneOf "eE"
                              sign <- pSign
@@ -288,29 +287,29 @@ number = do sign <- pSign
 
 whitespace = many $ oneOf "\n\t\r\v "
 
-nfunc :: Parser [CellFn]
+nfunc :: Parser CellFn
 nfunc = do
     fname <- manyTill letter (char '(')
     ps <- nexpr `sepBy` (char ',')
     char ')'
-    return ps
+    return $ foldl cfadd (nval 0.0) ps
 
 
-sfunc :: Parser [CellFn]
+sfunc :: Parser CellFn
 sfunc = do
     char '@'
     fname <- manyTill letter (char '(')
     ps <- sexpr `sepBy` (char ',')
     char ')'
-    return ps
+    return $ foldl cfadd (nval 0.0) ps
 
-bfunc :: Parser [CellFn]
+bfunc :: Parser CellFn
 bfunc = do
     char '@'
     fname <- manyTill letter (char '(')
     ps <- bexpr `sepBy` (char ',')
     char ')'
-    return $ ps
+    return $ foldl cfor (nval 0.0) ps
 
 pAbs:: Parser Char
 pAbs = char '$'

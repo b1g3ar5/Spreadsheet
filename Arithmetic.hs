@@ -34,6 +34,7 @@ data Arithmetic e = AVal Double
 		-- | This is a spreadsheet function eg. log()
 		| NFunc String  [e] deriving (Show)
 
+
 -- | Make all the expression types functors
 -- This is not a proper functor because of AVal Double
 instance Functor Arithmetic where
@@ -45,16 +46,6 @@ instance Functor Arithmetic where
 	fmap f (Pow x y)  = Pow (f x) (f y)
 	fmap f (NFunc s ps) = NFunc s (map f ps)
 	fmap f (NRef s r) = NRef (fmap f s) r
-
-instance Foldable Arithmetic where
-	foldMap f (AVal x)  = AVal $ f x
-	foldMap f (Add x y)  = Add (foldMap f x) (foldMap f y)
-	foldMap f (Mul x y)  = Mul (foldMap f x) (foldMap f y)
-	foldMap f (Div x y)  = Div (foldMap f x) (foldMap f y)
-	foldMap f (Sub x y)  = Sub (foldMap f x) (foldMap f y)
-	foldMap f (Pow x y)  = Pow (foldMap f x) (foldMap f y)
-	foldMap f (NFunc s ps) = NFunc s (foldMap f ps)
-	foldMap f (NRef s r) = NRef (fmap f s) r
 
 -- | The Arithmetic type is in the Eval class
 instance (Monad m) => Eval Arithmetic m where
@@ -71,7 +62,19 @@ instance (Monad m) => Eval Arithmetic m where
                     let ff = M.lookup (map toUpper s) nFunctionMap
                     return $ maybe (E "No such function") (\f -> f pss) ff
 
+-- Just try a few things...
+--add :: (Monad m ) => Arithmetic (m Value) -> Arithmetic (m Value) -> Arithmetic (m Value)
+--add a b = Add (evalAlg a) (evalAlg b)
 
+--ssum :: (Monad m ) => [Arithmetic (m Value)] -> Arithmetic (m Value)
+--ssum [] = AVal 0.0
+--ssum (a:[]) = a
+--ssum (a:as) = Add (evalAlg a) (evalAlg $ ssum as)
+
+--sprod :: (Monad m ) => [Arithmetic (m Value)] -> Arithmetic (m Value)
+--sprod [] = AVal 1.0
+--sprod (a:[]) = a
+--sprod (a:as) = Mul (evalAlg a) (evalAlg $ ssum as)
 
 -- | Look up a function
 nFunctionMap :: Map String ([Value]->Value)

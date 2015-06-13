@@ -105,6 +105,7 @@ radd :: Row -> Row -> Row -> Row
 radd rmax c1 c2@(RAbs _) = rMod rmax c2
 radd rmax c1 c2 = rMod rmax $ RRel $ (y c1) + (y c2)
 
+-- This is bad - we need to disallow adding to absolute references in the type system
 refAdd :: Ref -> Ref -> Ref -> Ref
 refAdd (Ref cmax rmax) r1 (r2@(Ref (CAbs _) (RAbs _))) = r2
 refAdd (Ref cmax rmax) r1 (r2@(Ref (CAbs _) (RRel _))) = Ref (cRef r2) $ radd rmax (rRef r1) (rRef r2)

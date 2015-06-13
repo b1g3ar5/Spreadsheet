@@ -11,12 +11,12 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Sheet (showSheet, toTuple, lastRef, lastCell, readSheet, Sheet(..), (Sheet.!), shift) where
+module Sheet ((Sheet.//), showSheet, toTuple, lastRef, lastCell, readSheet, Sheet(..), (Sheet.!), shift) where
 
 import Control.Monad.ST
 import Data.Array.ST
 
-import Data.Array
+import Data.Array 
 import Data.Maybe
 import Text.Read (readMaybe)
 import Data.List hiding (foldr)
@@ -51,6 +51,7 @@ instance Comonad Sheet where
 	extract (Sheet n ix css) = css Data.Array.! ix
 	duplicate (Sheet n ix css) = Sheet n ix $ listArray (bounds css) $ fmap (\jx-> Sheet n jx css) $ indices css
 
+-- Shifts the focus by adding r1 to it
 shift :: Ref -> Sheet a -> Sheet a
 shift r1 ss@(Sheet n r2 ass) = Sheet n (refAdd (lastRef ss) r1 r2) ass
 
@@ -66,6 +67,9 @@ instance Foldable Sheet where
     foldr :: forall a b. (a -> b-> b) -> b -> Sheet a -> b
     foldr f z s = F.foldr f z $ cells s
  
+(//) :: Sheet a -> [(Ref, a)] -> Sheet a
+(//) (Sheet n f as) rs = Sheet n f $ as Data.Array.// rs
+
 (!)::Sheet a ->Ref-> a
 (!) s r =  (cells s)Data.Array.!r
  

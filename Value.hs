@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Value ( showWithFormat, Format(..), Value(..), Eval(..), eval, vand, vor, vxor, vgt, vlt, veq, ccat) where
+module Value ( showWithFormat, Format(..), Value(..), Eval(..), eval, vadd, vand, vor, vxor, vgt, vlt, veq, ccat) where
 
 import Data.String
 import Data.Monoid
@@ -23,10 +23,6 @@ data Value where
 	S :: String -> Value
 	R :: [Ref] -> Value
 	E :: String -> Value deriving (Eq, Ord)
-
-instance Monoid Value where
-    mempty = R []
-    mappend (R xs) (R ys) = R $ xs ++ ys
 
 -- | Make Value an instance of Num
 instance Num Value where
@@ -90,18 +86,31 @@ eval = cata evalAlg
 
 -- | Some spreadsheet functions that work on Values - but have special characters in the cell input
 
+-- | Add 2 numbers
+vadd:: Value -> Value -> Value
+vadd (N b) (N c) = N $ b + c
+vadd _ _ = E "vadd needs number parameters"
+
 -- | Boolean AND = &&
 vand:: Value -> Value -> Value
 vand (B b) (B c) = B $ b && c
-vand _ _ = E "vand need boolena parameters"
+vand _ _ = E "vand needs boolean parameters"
 
 -- | Boolean OR = |
 vor:: Value -> Value -> Value
 vor (B b) (B c) = B $ b || c
+vor _ _ = E "vand needs boolean parameters"
+
+vors :: [Value] -> Value
+vors [] = B False
+vors (b:[]) = b
+vors (b:c:bs) = vor (vor b c) $ vors bs
 
 -- | Boolean XOR = 
 vxor:: Value -> Value -> Value
 vxor (B b) (B c) = B $ (b || c) && (not (b && c))
+vxor _ _ = E "vand needs boolean parameters"
+
 
 -- | Boolean greater than = >
 vgt:: Value -> Value -> Value
@@ -122,6 +131,8 @@ veq (B b) (B c) = B $ (b == c)
 -- | String concatenation = &
 ccat:: Value -> Value -> Value
 ccat (S b) (S c) = S $ b ++ c
+ccat _ _ = E "ccat needs string parameters"
+
 
 -- | Formatting - we need to show Values with a format
 -- We need number of decimal points and dates for the minumum

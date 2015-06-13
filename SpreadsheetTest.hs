@@ -3,7 +3,7 @@
 module SpreadsheetTest (sheetString, sheetString2, e1, e2, e3, v1, v2, v3, e, val, vat, sheet2, sheet3, sheet4, sheet5, wfixTest
                     , wfixTest2, wfixTest3, wfixTest4, wfixTest5, r4, cr4, v4) where
 
-import Data.Array hiding ((!))
+import Data.Array hiding ((!), (//))
 import Data.List
 import Control.Monad.Identity
 import Control.Comonad hiding ((<@))
@@ -19,7 +19,7 @@ import Expr
 import Sheet
 import Cell
 import Parser
---import RefParser
+import RefParser
 
 {-************************************************************************************************************
 
@@ -182,6 +182,76 @@ sheetString2 = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1),
 			, "=E1"
 			, "=E2"
 			, "=B2"]
+		all = concat $ [colA, colB, colC, colD, colE]
+
+sheetStringCirc :: Sheet String
+sheetStringCirc = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (5,5)) $ all
+	where
+		colA::[String]
+		colA = [ "=1.5"
+			, "=1"
+			, "=b3"
+			, "=C2"
+			, "=B2"]
+		colB::[String]
+		colB = [ "=10.0"
+			, "=a3"
+			, "=B2"
+			, "=D2"
+			, "=b1+41"]
+		colC::[String]
+		colC = [ "=20"
+			, "=21"
+			, "=B3"
+			, "=b2"
+			, "=b2*43"]
+		colD::[String]
+		colD = [ "=30.0"
+			, "=\"Hello\"&\" Nick\""
+			, "=B3"
+			, "=A2"
+			, "=A1/45"]
+		colE::[String]
+		colE = [ "=\"Nick\""
+		    , "=False||True"
+			, "=E1"
+			, "=E2"
+			, "=B2"]
+		all = concat $ [colA, colB, colC, colD, colE]
+
+sheetStringA3 :: Sheet String
+sheetStringA3 = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (5,5)) $ all
+	where
+		colA::[String]
+		colA = [ "=False"
+			, "=False"
+			, "=True"
+			, "=False"
+			, "=False"]
+		colB::[String]
+		colB = [ "=False"
+			, "=False"
+			, "=False"
+			, "=False"
+			, "=False"]
+		colC::[String]
+		colC = [ "=False"
+			, "=False"
+			, "=False"
+			, "=False"
+			, "=False"]
+		colD::[String]
+		colD = [ "=False"
+			, "=False"
+			, "=False"
+			, "=False"
+			, "=False"]
+		colE::[String]
+		colE = [ "=False"
+		    , "=False"
+			, "=False"
+			, "=False"
+			, "=False"]
 		all = concat $ [colA, colB, colC, colD, colE]
 
 sheet5 :: Sheet CellFn
