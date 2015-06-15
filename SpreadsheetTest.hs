@@ -12,6 +12,7 @@ import Text.Printf
 import qualified Control.Monad.State as S
 import qualified Graphics.UI.Threepenny as UI
 import Graphics.UI.Threepenny.Core as C
+import Text.ParserCombinators.Parsec as P hiding (string)
 
 import Cat
 import Ref
@@ -20,6 +21,86 @@ import Sheet
 import Cell
 import Parser
 import RefParser
+
+
+{-
+let str = "=A3"
+let ref = readRef "B2"
+let ss = sSimple
+let ptest = parseRefsSheet ss
+let ltest = loeb $ ptest//[(ref, bval True)]
+let f = either (const $ sval "Parse error") id $ parse refexpr "" str
+-}
+
+testCirc :: String -> Ref -> Sheet String -> Fix Cell
+testCirc str ref ss = f ltest
+    where
+        -- Parsed sheet - where the CellFn says whether it depends on ref.
+        ptest :: Sheet CellFn
+        ptest = parseRefsSheet ss
+        -- Apply the CellFns - with ref replaced by True
+        ltest :: Sheet (Fix Cell)
+        ltest = loeb $ ptest//[(ref, bval True)]
+        -- parsed input string
+        f :: CellFn
+        f = either (const $ sval "Parse error") id $ parse refexpr "" str
+
+nSimple :: Sheet CellFn
+nSimple = Sheet "Simple" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (3,3)) $ all
+	where
+		colA::[CellFn]
+		colA = [ nval 1.0
+			, nval 2.0
+			, nval 3.0]
+		colB::[CellFn]
+		colB = [ nval 4.0
+			, nval 5.0
+			, nval 6.0]
+		colC::[CellFn]
+		colC = [ nval 7.0
+			, nval 8.0
+			, nval 9.0]
+		all = concat $ [colA, colB, colC]
+
+bSimple :: Sheet CellFn
+bSimple = Sheet "Simple" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (3,3)) $ all
+	where
+		colA::[CellFn]
+		colA = [ bval False
+			, bval False
+			, bval False]
+		colB::[CellFn]
+		colB = [ bval False
+			, bval False
+			, bval False]
+		colC::[CellFn]
+		colC = [ bval False
+			, bval False
+			, bval False]
+		all = concat $ [colA, colB, colC]
+
+
+sSimple :: Sheet String
+sSimple = Sheet "Simple" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (3,3)) $ all
+	where
+		colA::[String]
+		colA = [ "=1.0"
+			, "=2.0"
+			, "=3.0"]
+		colB::[String]
+		colB = [ "=a1"
+			, "=5.0"
+			, "=6.0"]
+		colC::[String]
+		colC = [ "=a1"
+			, "=8.0"
+			, "=9.0"]
+		all = concat $ [colA, colB, colC]
+
+
+
+
+
 
 {-************************************************************************************************************
 
@@ -289,7 +370,6 @@ sheet5 = Sheet "CellFn5" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromC
 			, eref $ fromCoords (2,2)] -- B2 = 7
 		all = concat $ [colA, colB, colC, colD, colE]
 
-
 sheet6 :: Sheet CellFn
 sheet6 = Sheet "CellFn6" (fromCoords (1,1)) $ listArray (fromCoords (1,1), fromCoords (5,5)) $ all
 	where
@@ -505,7 +585,7 @@ sheet3 = Sheet "Value" (fromCoords (1,1)) $ listArray (fromCoords (0,0), fromCoo
 
 
 sheet4 :: Sheet CellFn
-sheet4 = Sheet "CellFn" (fromCoords (2,2)) $ listArray (fromCoords (0,0), fromCoords (4,4)) $ all
+sheet4 = Sheet "CellFn" (fromCoords (2,2)) $ listArray (fromCoords (1,1), fromCoords (5,5)) $ all
 	where
 		row0::[Sheet (Fix Cell) -> Fix Cell]
 		row0 = [ (nval 1.5)

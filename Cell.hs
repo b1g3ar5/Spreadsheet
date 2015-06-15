@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Cell ( cfor, cfadd, recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
+module Cell ( bval0, nval0, sval0, rval0, err0, cfor, cfadd, recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
 
 import Text.Printf
 import Control.Monad

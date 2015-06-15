@@ -135,8 +135,7 @@ which is the same as having an 'or' function for Cell?
 
 Check Circular References
 =========================
-1. Parse with parseRefsSheet
-2. Replace the current cell with rvalTrue
+1. Parse with parseRefsSheet with the current cell = rval True
 3. Call loeb
 4. If all other cells are false then Ok
 5. Make a list of the True cells - stick it in a output field somewhere
@@ -144,6 +143,22 @@ Check Circular References
 
 
 -}
+
+testCirc :: String -> Ref -> Sheet String -> Fix Cell
+testCirc str ref ss = f ltest
+    where
+        -- Sheet with True in reffed cell
+        test :: Sheet String
+        test = ss//[(ref, "=True")]
+        -- Parsed sheet - where the CellFn says whether it depends on ref.
+        ptest :: Sheet CellFn
+        ptest = parseRefsSheet test
+        -- Apply the CellFns
+        ltest :: Sheet (Fix Cell)
+        ltest = loeb ptest
+        -- parsed input string
+        f :: CellFn
+        f = either (const $ sval "Parse error") id $ parse expr "" str
 
 main :: IO ()
 main = do   
