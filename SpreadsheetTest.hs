@@ -32,16 +32,35 @@ let ltest = loeb $ ptest//[(ref, bval True)]
 let f = either (const $ sval "Parse error") id $ parse refexpr "" str
 -}
 
+-- Returns the parsed input string (ie. a CellFn) applied to the sheet of True/Falses
+-- which show the cells that depend on the ref
+-- The parsed CellFn just just cfor's all the bools together
+isCirc :: String -> Ref -> Sheet String -> Bool
+isCirc str ref ss = (runId $ eval $ f ltest) == (B True)
+    where
+        -- Parse sheet to functions whcih return True/False - whether it depends on ref
+        ptest :: Sheet CellFn
+        ptest = parseRefsSheet ss
+        -- Apply the CellFns - with ref cell replaced by True
+        ltest :: Sheet (Fix Cell)
+        ltest = loeb $ ptest//[(ref, bval True)]
+        -- Parse the input string
+        f :: CellFn
+        f = either (const $ sval "Parse error") id $ parse refexpr "" str
+
+-- Returns the parsed input string (ie. a CellFn) applied to the sheet of True/Falses
+-- which show the cells that depend on the ref
+-- The parsed CellFn just just cfor's all the bools together
 testCirc :: String -> Ref -> Sheet String -> Fix Cell
 testCirc str ref ss = f ltest
     where
-        -- Parsed sheet - where the CellFn says whether it depends on ref.
+        -- Parse sheet to functions whcih return True/False - whether it depends on ref
         ptest :: Sheet CellFn
         ptest = parseRefsSheet ss
-        -- Apply the CellFns - with ref replaced by True
+        -- Apply the CellFns - with ref cell replaced by True
         ltest :: Sheet (Fix Cell)
         ltest = loeb $ ptest//[(ref, bval True)]
-        -- parsed input string
+        -- Parse the input string
         f :: CellFn
         f = either (const $ sval "Parse error") id $ parse refexpr "" str
 

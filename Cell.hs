@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Cell ( bval0, nval0, sval0, rval0, err0, cfor, cfadd, recalcSheet, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
+module Cell ( bval0, nval0, sval0, rval0, err0, cfor, cfadd, Cell(..), CellFn(..), emptySheet, printCalcedSheet, nval,  bval, sval, rval, eadd, emul, ediv, esub, epow, eand, eor, exor, egt, elt, eeq, econcat, enfunc, ebfunc, esfunc, eref) where
 
 import Text.Printf
 import Control.Monad
@@ -38,11 +38,11 @@ instance Show e => Show (Cell e) where
 
 -- | Just apply f to the contents of the Cell
 instance Functor Cell where
-	fmap  f (CA x)  = CA $ fmap f x
-	fmap  f (CL x)  = CL $ fmap f x
-	fmap  f (CS x)  = CS $ fmap f x
-	fmap  f (CR x)  = CR $ fmap f x
-	fmap  f CE  = CE
+    fmap  f (CA x)  = CA $ fmap f x
+    fmap  f (CL x)  = CL $ fmap f x
+    fmap  f (CS x)  = CS $ fmap f x
+    fmap  f (CR x)  = CR $ fmap f x
+    fmap  f CE  = CE
 
 -- | Similarly for the Eval instance
 instance Monad m => Eval Cell m where
@@ -100,8 +100,9 @@ fcadd c1 c2 = fixup $ vadd (runId $ eval c1) (runId $ eval c2)
         fixup (_) = err0
 
 -- | Evaluate and print the cellFns here is the LOEB!
-recalcSheet :: Sheet CellFn -> Sheet String
-recalcSheet fs = fmap (show.runId.eval) $ loeb fs
+--recalcSheet :: Sheet CellFn -> Sheet String
+--recalcSheet fs = fmap (show.runId.eval) $ loeb fs
+--recalcSheet = recalc
 
 -- | We need to get the refs from a CellFn before the loeb because loeb calcs the 
 -- references. I wonder if we could get a function similar to loeb to calculate
@@ -111,27 +112,27 @@ recalcSheet fs = fmap (show.runId.eval) $ loeb fs
 -- | Create an initial sheet - with numbers in it 
 emptySheet :: Int -> Int -> Sheet CellFn
 emptySheet m n = Sheet "Empty" (fromCoords (0,0)) $ listArray (fromCoords (0,0), fromCoords (m-1,n-1)) $ all
-    	where
-            all :: [CellFn]
-            all = take (m*n) $ fmap (\i-> nval $ fromIntegral i) [1..]
+    where
+        all :: [CellFn]
+        all = take (m*n) $ fmap (\i-> nval $ fromIntegral i) [1..]
 
 -- | Print a sheet of Fix Cells - that is a recalculated sheet
 printCalcedSheet :: Sheet (Fix Cell) -> IO ()
 printCalcedSheet ss = 
-	forM_ [ymin..ymax] $ \i -> do
-		forM_ [xmin..xmax] $ \j ->
-			--printf "%s   " (show $ (cells wss) ! (fromCoords (j,i)))
-			printf "%s   " (show $ (wss) ! (fromCoords (j,i)))
-		printf "\n"
-	where
-		xmin = x $ cRef $ fst $ bounds $ cells ss
-		xmax = x $ cRef $ snd $ bounds $ cells ss
-		ymin = y $ rRef $ fst $ bounds $ cells ss
-		ymax = y $ rRef $ snd $ bounds $ cells ss
-		wss = fmap (runId.eval) ss	
-		cout :: Sheet String
-		cout = fmap (\c -> printf "%s\n" $ show c) ss	
-		xss = fmap (show.runId.eval) $ cells ss		
+    forM_ [ymin..ymax] $ \i -> do
+        forM_ [xmin..xmax] $ \j ->
+            --printf "%s   " (show $ (cells wss) ! (fromCoords (j,i)))
+            printf "%s   " (show $ (wss) ! (fromCoords (j,i)))
+        printf "\n"
+    where
+        xmin = x $ cRef $ fst $ bounds $ cells ss
+        xmax = x $ cRef $ snd $ bounds $ cells ss
+        ymin = y $ rRef $ fst $ bounds $ cells ss
+        ymax = y $ rRef $ snd $ bounds $ cells ss
+        wss = fmap (runId.eval) ss
+        cout :: Sheet String
+        cout = fmap (\c -> printf "%s\n" $ show c) ss
+        xss = fmap (show.runId.eval) $ cells ss
 
 
 -- | We can inject from a Sheet into a Cell

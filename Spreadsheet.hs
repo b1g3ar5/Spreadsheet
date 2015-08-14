@@ -11,6 +11,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE InstanceSigs #-}
 
+module Main (main) where
+
 --module Spreadsheet (e1, e2, e3, v1, v2, v3, e, val, vat, sheet2, sheet3, sheet4, sheet5, wfixTest
 --                    , wfixTest2, wfixTest3, wfixTest4, wfixTest5, r4, cr4, v4, setBlur, UI.setFocus, setup, getCell, renderCell, ee) where
 
@@ -144,21 +146,6 @@ Check Circular References
 
 -}
 
-testCirc :: String -> Ref -> Sheet String -> Fix Cell
-testCirc str ref ss = f ltest
-    where
-        -- Sheet with True in reffed cell
-        test :: Sheet String
-        test = ss//[(ref, "=True")]
-        -- Parsed sheet - where the CellFn says whether it depends on ref.
-        ptest :: Sheet CellFn
-        ptest = parseRefsSheet test
-        -- Apply the CellFns
-        ltest :: Sheet (Fix Cell)
-        ltest = loeb ptest
-        -- parsed input string
-        f :: CellFn
-        f = either (const $ sval "Parse error") id $ parse expr "" str
 
 main :: IO ()
 main = do   
@@ -198,17 +185,18 @@ setup rSheets window = void $ do
     bBlur <- stepper ("", fromCoords (1,1)) $ fmap head $ UI.unions blurVals        
         
     -- What to do when the cell is blurred
-    --      Work out the new input sheet
-    --      Save a new sheet to the IORef
-    --      Work out the new output sheet
-    --      Write new output to all cells
+    --  Work out the new input sheet
+    --  Save a new sheet to the IORef
+    --  Work out the new output sheet
+    --  Write new output to all cells
+    
     onChanges bBlur (\(cstr, ref) -> do
                         let (str, fmt) = split cstr
                         liftIO $ updateSheet (str, fmt, ref) rSheets
                         (newInput, newFormat) <- liftIO $ readIORef rSheets
-                        --let output = recalcSheet $ parseSheet newInput
-                        let circ = recalcSheet $ parseRefsSheet newInput
-                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (showWithFormat (newFormat!ref) $ circ!ref))
+                        let output = recalc $ parseSheet newInput
+                        let circ = recalc $ parseRefsSheet newInput
+                        uiApply cellss (\(cell, ref) -> do return cell # set UI.value (showWithFormat (newFormat!ref) $ output!ref))
                     )
         
     -- After all this we need to get the cells to display the user input when on focus

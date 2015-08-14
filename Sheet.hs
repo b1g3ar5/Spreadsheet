@@ -11,7 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Sheet ((Sheet.//), showSheet, toTuple, lastRef, lastCell, readSheet, Sheet(..), (Sheet.!), shift) where
+module Sheet (isCirc, recalc, (Sheet.//), showSheet, toTuple, lastRef, lastCell, readSheet, Sheet(..), (Sheet.!), shift) where
 
 import Control.Monad.ST
 import Data.Array.ST
@@ -25,6 +25,7 @@ import Data.Foldable as F hiding (concat)
 import Control.Monad
 import Control.Monad.Identity
 import Control.Comonad
+--import Control.ComonadApply
 import Text.Printf
 import Data.Either.Utils (fromRight)
 import Cat
@@ -50,6 +51,37 @@ instance Functor Sheet where
 instance Comonad Sheet where
 	extract (Sheet n ix css) = css Data.Array.! ix
 	duplicate (Sheet n ix css) = Sheet n ix $ listArray (bounds css) $ fmap (\jx-> Sheet n jx css) $ indices css
+
+--instance ComonadApply (Array Ref) where
+--    (a1) <@> (a2) = array (lower, upper) $ map (\ix -> (ix, (a1 Data.Array.! ix) (a2 Data.Array.! ix))) newIndices
+--                    where
+--                        newIndices = intersect (indices a1) $ indices a2
+--                        lower = max (fst $ bounds a1) (fst $ bounds a2)
+--                        upper = min (snd $ bounds a1) (snd $ bounds a2)
+
+instance ComonadApply Sheet where
+    (Sheet n1 f1 fs) <@> (Sheet n2 f2 as) = Sheet n1 f1 $ apply fs as
+        where
+            apply (a1)(a2) = array (lower, upper) $ map (\ix -> (ix, (a1 Data.Array.! ix) (a2 Data.Array.! ix))) newIndices
+                    where
+                        newIndices = intersect (indices a1) $ indices a2
+                        lower = max (fst $ bounds a1) (fst $ bounds a2)
+                        upper = min (snd $ bounds a1) (snd $ bounds a2)
+
+-- | Evaluate and print the cellFns here is the LOEB!
+recalc :: (Eval a Id) => Sheet (Sheet (Fix a) -> Fix a) -> Sheet String
+recalc fs = fmap (show.runId.(cata evalAlg)) $ loeb fs
+
+
+-- Returns the parsed input string (ie. a CellFn) applied to the sheet of True/Falses
+-- which show the cells that depend on the ref
+-- The parsed CellFn just just cfor's all the bools together
+-- f = input string parsed using refExpr
+-- ss = parseRefsSheet of the Sheet String with the investigated cell replaced by bval True
+-- ie. ss = (parseRefsSheet ss) // [(ref, bval True)]
+isCirc :: (Eval a Id) =>(Sheet (Fix a) -> Fix a) -> Sheet (Sheet (Fix a) -> Fix a) -> Bool
+isCirc f ss = (runId $ eval $ f $ loeb ss) == (B True)
+
 
 -- Shifts the focus by adding r1 to it
 shift :: Ref -> Sheet a -> Sheet a

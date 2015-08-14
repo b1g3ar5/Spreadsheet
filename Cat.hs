@@ -12,6 +12,7 @@ module Cat ( Id(..), Fix(..), HFix(..), coreturn, cojoin, cata, hcata, (:~>), I(
 import Data.Monoid
 import Data.Fix
 import Control.Comonad
+--import Control.Functor.Apply
 
 -- |This file has some category theory stuff in it which I couldn't find in a common library
 
@@ -28,13 +29,13 @@ newtype I x = I {unI :: x} deriving (Show)
 newtype J x y = J {unJ :: x}
 
 class HFunctor (h :: ( * -> * ) -> * -> *) where
-	hfmap :: (f :~> g) -> h f :~> h g
+    hfmap :: (f :~> g) -> h f :~> h g
 
 class HFoldable (h :: (* -> *) -> * -> *) where
-	hfoldmap:: Monoid m => (forall b. f b->m) -> h f a -> m
+    hfoldmap:: Monoid m => (forall b. f b->m) -> h f a -> m
 
 class HEq (f :: * -> *) where
-	heq :: f a -> f a -> Bool
+    heq :: f a -> f a -> Bool
 
 
 coreturn:: Comonad w => w a -> a
@@ -46,11 +47,15 @@ cojoin = duplicate
 data Id x = Id {runId::x} deriving (Show)
 
 instance Functor Id where
-	fmap f (Id x) = Id $ f x
+    fmap f (Id x) = Id $ f x
 
+instance Applicative Id where
+    pure a = Id a
+    Id f <*> Id x = Id (f x)
+    
 instance Monad Id where
-	return x = Id x
-	(Id x) >>= f = f x
+    return x = Id x
+    (Id x) >>= f = f x
 
 moeb :: (((a -> b) -> b) -> c -> a) -> c -> a
 moeb f x = go where go = f ($ go) x
